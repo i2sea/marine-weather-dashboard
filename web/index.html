@@ -100,13 +100,15 @@ const PRESETS=[
 const LONG=[['최근 1년','풍황 최소','사계절이 한 번씩 들어가는 최소 기간 — 풍황 1차 검토'],
  ['최근 5년','추천','해마다 다른 바람 세기(연변동)를 반영 — 발전량 검토용으로 권장'],
  ['최근 10년','장기·극치','장기 보정, 설계파고 같은 극치 분석용. 관측 시작이 늦은 지점은 그 이후만 나옴']];
-const REPO='https://github.com/i2sea/marine-weather-dashboard';
+const KMA='https://data.kma.go.kr/data/sea/selectBuoyRltmList.do?pgmNo=52';
 function dlBox(){return `<div class="box"><h3>자료 내려받기 (CSV)</h3>${PRESETS.map((p,i)=>`<button class="preset" data-i="${i}" onclick="preset(${i})"><b>${p.n}</b>${p.t?`<span class="tag">${p.t}</span>`:''}<small>${p.m}</small></button>`).join('')}
  <div class="row"><input type="date" id="d1" onchange="est()"> ~ <input type="date" id="d2" onchange="est()"></div>
  <div class="est" id="est"></div><button class="btn pri" onclick="dl()">CSV 내려받기</button>
- <h3 style="margin-top:14px">더 긴 기간이 필요하면</h3>
+ <h3 style="margin-top:14px">1년·5년·10년 자료 받기 (기상청)</h3>
  ${LONG.map(([n,t,m])=>`<div class="preset" style="cursor:default"><b>${n}</b><span class="tag">${t}</span><small>${m}</small></div>`).join('')}
- <div class="sub" style="line-height:1.6">이 페이지에는 최근 30일만 보관합니다. 1년 이상은 <a href="${REPO}#pc에서-긴-기간-내려받기" target="_blank">PC 프로그램</a>으로 기상청에서 직접 받으세요 (기상청 API허브 인증키 필요, 무료).</div></div>`;}
+ <a class="btn pri" style="display:inline-block;text-decoration:none;margin:4px 0" href="${KMA}" target="_blank" rel="noopener">기상청 기상자료개방포털에서 받기 ↗</a>
+ <div class="sub" style="line-height:1.7">열린 페이지에서 <b>로그인</b> → 지점 <b>${SEL.name} (${SEL.stn})</b> 선택 → 기간·요소 선택 → 조회 → CSV 다운로드<br>
+ · 시간자료는 한 번에 최대 1년씩 받을 수 있습니다 (5년이면 5번)<br>· 일자료는 10년까지 한 번에 받을 수 있습니다<br>· 회원가입·이용은 무료입니다</div></div></div>`;}
 const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 function preset(i){const p=PRESETS[i],t=new Date(),s=new Date(t-(p.d-1)*864e5);document.getElementById('d1').value=iso(s);document.getElementById('d2').value=iso(t);
  document.querySelectorAll('.preset[data-i]').forEach(b=>b.classList.toggle('on',+b.dataset.i==i));est();}
