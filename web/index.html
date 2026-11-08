@@ -36,7 +36,7 @@ canvas{width:100%!important}
 .err{color:#b42318;font-size:12px}
 </style></head><body>
 <header><h1>해양기상 실시간 관측</h1><span class="meta" id="meta">불러오는 중…</span><span class="sp"></span>
-<button onclick="map.setView([35.16,129.2],10)">기장·청사포 주변</button><button onclick="map.setView([36,127.8],7)">전국</button>
+<button onclick="map.setView([36,127.8],7)">전국</button>
 <button onclick="refresh(true)">새로고침</button></header>
 <main><div id="map"></div><aside>
 <div class="filters" id="filters"></div>
@@ -46,9 +46,8 @@ canvas{width:100%!important}
 <script>
 const TYPES={B:["해양기상부이","#1f6feb"],C:["파고부이","#0e9384"],L:["등표","#c4320a"],N:["조위관측소","#6941c6"],F:["연안방재관측","#b54708"],J:["기상1호","#475467"]};
 const show={B:true,C:true,L:true,N:false,F:false,J:true};
-const map=L.map('map',{zoomControl:true}).setView([35.16,129.2],9);
+const map=L.map('map',{zoomControl:true}).setView([36,127.8],7);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap'}).addTo(map);
-L.circle([35.16,129.2],{radius:60000,color:'#1f6feb',weight:1,dashArray:'4 4',fill:false}).addTo(map).bindTooltip('청사포 기준 60km');
 const layer=L.layerGroup().addTo(map);let DATA=null,SEL=null,chart=null,hours=24;
 const f=(v,d=1)=>v==null?'–':v.toFixed(d);
 const tmfmt=s=>s?`${s.slice(4,6)}/${s.slice(6,8)} ${s.slice(8,10)}:${s.slice(10,12)}`:'';
