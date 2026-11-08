@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>해양기상 실시간 관측</title>
+<meta name="description" content="기상청 해양기상부이·파고부이·등표 관측을 지도로 보는 대시보드">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1d2433;--sub:#667085;--line:#e4e7ec;--acc:#1f6feb}
+*{box-sizing:border-box}body{margin:0;font-family:"Pretendard","Malgun Gothic",system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+header{height:52px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#0f2742;color:#fff}
+header h1{font-size:16px;margin:0;font-weight:700}header .meta{font-size:12px;opacity:.8}
+header .sp{flex:1}header button{background:#ffffff1a;color:#fff;border:1px solid #ffffff40;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px}
+main{display:flex;height:calc(100vh - 52px)}#map{flex:1}
+aside{width:420px;background:var(--card);border-left:1px solid var(--line);overflow:auto;padding:14px 16px}
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chip{display:flex;align-items:center;gap:5px;font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 9px;cursor:pointer;user-select:none}
+.chip input{margin:0}.dot{width:10px;height:10px;border-radius:50%}
+h2{font-size:17px;margin:4px 0 2px}.sub{color:var(--sub);font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.kv{background:var(--bg);border-radius:8px;padding:8px}.kv b{display:block;font-size:17px}.kv span{font-size:11px;color:var(--sub)}
+.tabs{display:flex;gap:4px;margin:8px 0}.tabs button,.btn{border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px}
+.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.btn.pri{background:var(--acc);color:#fff;border-color:var(--acc)}
+canvas{width:100%!important}
+.box{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:14px}
+.box h3{margin:0 0 8px;font-size:14px}
+.preset{display:block;width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer}
+.preset.on{border-color:var(--acc);background:#eef4ff}.preset b{font-size:13px}.preset small{display:block;color:var(--sub);font-size:11px;margin-top:2px}
+.tag{font-size:10px;background:#e7f6ec;color:#16794a;border-radius:4px;padding:1px 5px;margin-left:4px}
+.row{display:flex;gap:6px;align-items:center;margin:6px 0}.row input{flex:1;padding:5px;border:1px solid var(--line);border-radius:6px}
+.est{font-size:12px;color:var(--sub);margin:6px 0}.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc);width:0}
+.empty{color:var(--sub);font-size:13px;line-height:1.6;margin-top:30px}
+.wlab{font:600 11px system-ui;color:#111;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap}
+.legend{background:#fff;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.7;box-shadow:0 1px 4px #0002}
+.err{color:#b42318;font-size:12px}
+</style></head><body>
+<header><h1>해양기상 실시간 관측</h1><span class="meta" id="meta">불러오는 중…</span><span class="sp"></span>
+<button onclick="map.setView([35.16,129.2],10)">기장·청사포 주변</button><button onclick="map.setView([36,127.8],7)">전국</button>
+<button onclick="refresh(true)">새로고침</button></header>
+<main><div id="map"></div><aside>
+<div class="filters" id="filters"></div>
+<div id="panel"><div class="empty">지도에서 관측 지점을 누르면 최신값과 최근 변화 그래프가 나오고, 원하는 기간의 자료를 내려받을 수 있습니다.<br><br>
+· 화살표: 바람이 불어가는 방향, 숫자: 풍속(m/s)<br>· 동그라미: 바람 관측이 없는 지점(파고부이 등), 숫자: 유의파고(m)<br>· 기상청 해양기상관측을 매시간 받아 갱신합니다 (출처: 기상청 API허브).</div></div>
+</aside></main>
+<script>
+const TYPES={B:["해양기상부이","#1f6feb"],C:["파고부이","#0e9384"],L:["등표","#c4320a"],N:["조위관측소","#6941c6"],F:["연안방재관측","#b54708"],J:["기상1호","#475467"]};
+const show={B:true,C:true,L:true,N:false,F:false,J:true};
+const map=L.map('map',{zoomControl:true}).setView([35.16,129.2],9);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap'}).addTo(map);
+L.circle([35.16,129.2],{radius:60000,color:'#1f6feb',weight:1,dashArray:'4 4',fill:false}).addTo(map).bindTooltip('청사포 기준 60km');
+const layer=L.layerGroup().addTo(map);let DATA=null,SEL=null,chart=null,hours=24;
+const f=(v,d=1)=>v==null?'–':v.toFixed(d);
+const tmfmt=s=>s?`${s.slice(4,6)}/${s.slice(6,8)} ${s.slice(8,10)}:${s.slice(10,12)}`:'';
+function filters(){document.getElementById('filters').innerHTML=Object.entries(TYPES).map(([k,[n,c]])=>
+ `<label class="chip"><input type="checkbox" ${show[k]?'checked':''} onchange="show['${k}']=this.checked;draw()"><span class="dot" style="background:${c}"></span>${n}</label>`).join('');}
+function icon(s){const c=TYPES[s.tp]?.[1]||'#333';
+ if(s.ws!=null&&s.wd!=null){const r=(s.wd+180)%360;
+  return L.divIcon({className:'',iconSize:[60,36],iconAnchor:[13,18],html:`<div style="display:flex;align-items:center;gap:2px">
+  <svg width="26" height="26" viewBox="-13 -13 26 26" style="transform:rotate(${r}deg)"><circle r="11" fill="#fff" stroke="${c}" stroke-width="2"/><path d="M0,-8 L5,4 L0,1 L-5,4Z" fill="${c}"/></svg>
+  <span class="wlab">${f(s.ws)}</span></div>`});}
+ return L.divIcon({className:'',iconSize:[60,24],iconAnchor:[8,8],html:`<div style="display:flex;align-items:center;gap:2px">
+  <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="${c}" stroke="#fff" stroke-width="2"/></svg><span class="wlab">${s.wh!=null?f(s.wh)+'m':''}</span></div>`});}
+function draw(){layer.clearLayers();if(!DATA)return;
+ for(const s of DATA.stations){if(!show[s.tp])continue;
+  L.marker([s.lat,s.lon],{icon:icon(s),opacity:(tmDate(DATA.base)-tmDate(s.tm))>6*36e5?0.35:1}).addTo(layer).on('click',()=>select(s))
+   .bindTooltip(`${s.name} (${TYPES[s.tp]?.[0]||s.tp} ${s.stn}) · ${tmfmt(s.tm)}`);}}
+async function refresh(force){try{const r=await fetch('data/latest.json?'+Date.now());const j=await r.json();if(j.error)throw j.error;DATA=j;
+ document.getElementById('meta').textContent=`관측 ${tmfmt(j.base)} 기준 · ${j.stations.length}개 지점 · ${j.built.slice(5)} 갱신 (매시간 자동)`;draw();
+ if(SEL){const n=DATA.stations.find(x=>x.stn==SEL.stn&&x.tp==SEL.tp);if(n){SEL=n;head();}}}
+ catch(e){document.getElementById('meta').textContent='불러오기 실패: '+e;}}
+function head(){const s=SEL;document.getElementById('head').innerHTML=`<h2>${s.name} <span class="sub">${TYPES[s.tp]?.[0]||s.tp} · ${s.stn}</span></h2>
+ <div class="sub">${s.lat.toFixed(4)}, ${s.lon.toFixed(4)} · 관측 ${tmfmt(s.tm)}</div>
+ <div class="grid"><div class="kv"><span>풍속 / 돌풍 (m/s)</span><b>${f(s.ws)} / ${f(s.gst)}</b></div><div class="kv"><span>풍향 (°)</span><b>${f(s.wd,0)}</b></div>
+ <div class="kv"><span>유의파고 (m)</span><b>${f(s.wh)}</b></div><div class="kv"><span>수온 (℃)</span><b>${f(s.tw)}</b></div>
+ <div class="kv"><span>기온 (℃)</span><b>${f(s.ta)}</b></div><div class="kv"><span>기압 (hPa)</span><b>${f(s.pa)}</b></div></div>`;}
+function select(s){SEL=s;SER=null;document.getElementById('panel').innerHTML=`<div id="head"></div>
+ <div class="tabs">${[24,72,168,720].map(h=>`<button data-h="${h}" onclick="hours=${h};loadSeries()">${h/24}일</button>`).join('')}<span class="sub" id="sst" style="margin-left:6px"></span></div>
+ <canvas id="ch" height="230"></canvas>${dlBox()}`;head();loadSeries().then(()=>preset(1));}
+let SER=null;
+async function loadSeries(){document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',+b.dataset.h==hours));
+ const st=document.getElementById('sst');
+ try{if(!SER||SER.stn!=SEL.stn){st.textContent='불러오는 중…';SER=await (await fetch(`data/series/${SEL.stn}.json?`+Math.floor(Date.now()/6e5))).json();}
+  const rows=serRows(hours);st.textContent=`${rows.length}개 관측`;plot(rows);}
+ catch(e){st.innerHTML=`<span class="err">자료 없음</span>`;}}
+function tmDate(s){return new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8),+s.slice(8,10),+s.slice(10,12));}
+function serRows(h,from,to){const out=[],lim=h?tmDate(SER.tm[SER.tm.length-1])-h*36e5:0;
+ SER.tm.forEach((tm,i)=>{const d=tmDate(tm);if(h&&d<lim)return;if(from&&(d<from||d>to))return;
+  const r={tm};for(const k of ['ws','gst','wd','wh','tw','ta','pa','hm'])if(SER[k])r[k]=SER[k][i];out.push(r);});return out;}
+function plot(rows){const lab=rows.map(r=>tmfmt(r.tm)),ds=[],has=k=>rows.some(r=>r[k]!=null);
+ const add=(k,n,c,ax,dash)=>{if(has(k))ds.push({label:n,data:rows.map(r=>r[k]),borderColor:c,backgroundColor:c,yAxisID:ax,borderWidth:1.6,pointRadius:0,spanGaps:true,borderDash:dash||[]});};
+ add('ws','풍속','#1f6feb','y');add('gst','돌풍','#84adf5','y',[4,3]);add('wh','유의파고','#0e9384','y2');add('tw','수온','#c4320a','y3');add('ta','기온','#f79009','y3',[4,3]);
+ if(chart)chart.destroy();chart=new Chart(document.getElementById('ch'),{type:'line',data:{labels:lab,datasets:ds},
+ options:{animation:false,interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{boxWidth:12,font:{size:11}}}},
+ scales:{x:{ticks:{maxTicksLimit:7,font:{size:10}}},y:{position:'left',title:{display:true,text:'m/s'},display:has('ws')},
+ y2:{position:'right',title:{display:true,text:'파고 m'},grid:{drawOnChartArea:false},display:has('wh')},
+ y3:{position:'right',title:{display:true,text:'℃'},grid:{drawOnChartArea:false},display:has('tw')||has('ta')}}}});}
+const PRESETS=[
+ {d:7,n:'최근 7일',t:'',m:'최근 해황 확인 — 바로 내려받기'},
+ {d:30,n:'최근 30일',t:'',m:'자료 상태 확인, 공사·작업 기간 해황 — 바로 내려받기'}];
+const LONG=[['최근 1년','풍황 최소','사계절이 한 번씩 들어가는 최소 기간 — 풍황 1차 검토'],
+ ['최근 5년','추천','해마다 다른 바람 세기(연변동)를 반영 — 발전량 검토용으로 권장'],
+ ['최근 10년','장기·극치','장기 보정, 설계파고 같은 극치 분석용. 관측 시작이 늦은 지점은 그 이후만 나옴']];
+const REPO='https://github.com/i2sea/marine-weather-dashboard';
+function dlBox(){return `<div class="box"><h3>자료 내려받기 (CSV)</h3>${PRESETS.map((p,i)=>`<button class="preset" data-i="${i}" onclick="preset(${i})"><b>${p.n}</b>${p.t?`<span class="tag">${p.t}</span>`:''}<small>${p.m}</small></button>`).join('')}
+ <div class="row"><input type="date" id="d1" onchange="est()"> ~ <input type="date" id="d2" onchange="est()"></div>
+ <div class="est" id="est"></div><button class="btn pri" onclick="dl()">CSV 내려받기</button>
+ <h3 style="margin-top:14px">더 긴 기간이 필요하면</h3>
+ ${LONG.map(([n,t,m])=>`<div class="preset" style="cursor:default"><b>${n}</b><span class="tag">${t}</span><small>${m}</small></div>`).join('')}
+ <div class="sub" style="line-height:1.6">이 페이지에는 최근 30일만 보관합니다. 1년 이상은 <a href="${REPO}#pc에서-긴-기간-내려받기" target="_blank">PC 프로그램</a>으로 기상청에서 직접 받으세요 (기상청 API허브 인증키 필요, 무료).</div></div>`;}
+const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function preset(i){const p=PRESETS[i],t=new Date(),s=new Date(t-(p.d-1)*864e5);document.getElementById('d1').value=iso(s);document.getElementById('d2').value=iso(t);
+ document.querySelectorAll('.preset[data-i]').forEach(b=>b.classList.toggle('on',+b.dataset.i==i));est();}
+function est(){const a=document.getElementById('d1').value,b=document.getElementById('d2').value,first=SER&&SER.tm.length?SER.tm[0]:'';
+ document.getElementById('est').innerHTML=`${a} ~ ${b}${first?` · 이 지점 보관 자료는 ${tmfmt(first)}부터`:''}`;}
+async function dl(){if(!SER)SER=await (await fetch(`data/series/${SEL.stn}.json`)).json();
+ const a=new Date(document.getElementById('d1').value+'T00:00'),b=new Date(document.getElementById('d2').value+'T23:59');
+ const rows=serRows(0,a,b),cols=['tm','ws','gst','wd','wh','tw','ta','pa','hm'].filter(k=>k=='tm'||SER[k]);
+ const head={tm:'관측시각(KST)',ws:'풍속(m/s)',gst:'돌풍(m/s)',wd:'풍향(deg)',wh:'유의파고(m)',tw:'수온(C)',ta:'기온(C)',pa:'기압(hPa)',hm:'습도(%)'};
+ const csv='\ufeff'+['지점번호,지점명,종류,'+cols.map(c=>head[c]).join(',')].concat(rows.map(r=>`${SEL.stn},${SEL.name},${TYPES[SEL.tp]?.[0]||SEL.tp},`+cols.map(c=>r[c]??'').join(','))).join('\r\n');
+ const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),el=document.createElement('a');
+ el.href=u;el.download=`${SEL.name}_${SEL.stn}_${iso(a).replace(/-/g,'')}-${iso(b).replace(/-/g,'')}.csv`;el.click();
+ document.getElementById('est').innerHTML+=` · ${rows.length}행 저장`;}
+const lg=L.control({position:'bottomleft'});lg.onAdd=()=>{const d=L.DomUtil.create('div','legend');
+ d.innerHTML=Object.values(TYPES).map(([n,c])=>`<span class="dot" style="display:inline-block;background:${c}"></span> ${n}`).join('<br>')+'<br><span class="sub">화살표: 바람이 불어가는 방향</span>';return d;};lg.addTo(map);
+filters();refresh();setInterval(refresh,600000);
+</script></body></html>

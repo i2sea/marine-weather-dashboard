@@ -1,0 +1,59 @@
+name: 해양기상 자료 갱신
+
+on:
+  schedule:
+    - cron: "17 * * * *"   # 매시 17분(UTC 기준이지만 매시간이라 상관없음) — 기상청 정시 자료가 올라온 뒤
+  workflow_dispatch:        # Actions 탭에서 수동 실행
+  push:
+    branches: [main]
+    paths: ["web/**", "collector/**", ".github/workflows/**"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      TZ: Asia/Seoul
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 이미 받은 시간자료(최근 30일)를 이어서 씀 — 매번 처음부터 받지 않도록
+      - uses: actions/cache/restore@v4
+        with:
+          path: collector/cache
+          key: seaobs-${{ github.run_id }}
+          restore-keys: seaobs-
+
+      - name: 기상청 자료 받아 사이트 만들기
+        env:
+          KMA_API_KEY: ${{ secrets.KMA_API_KEY }}
+        run: python collector/build_site.py --days 30 --out site
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: collector/cache
+          key: seaobs-${{ github.run_id }}
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

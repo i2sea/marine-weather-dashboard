@@ -1,0 +1,11 @@
+# 인증키는 절대 올리지 않음
+kma_key.txt
+**/kma_key.txt
+
+# 받은 자료·임시 파일
+collector/cache/
+collector/data/
+collector/raw/
+site/
+__pycache__/
+*.pyc
