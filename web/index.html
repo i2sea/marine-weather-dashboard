@@ -33,6 +33,10 @@ canvas{width:100%!important}
 .empty{color:var(--sub);font-size:13px;line-height:1.6;margin-top:30px}
 .wlab{font:600 11px system-ui;color:#111;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap}
 .legend{background:#fff;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.7;box-shadow:0 1px 4px #0002}
+.keybox{background:#fff8e6;border:1.5px solid #f5b83d;border-radius:10px;padding:10px 12px;margin:10px 0}
+.keybox .keytitle{font-weight:700;font-size:13px;color:#8a5a00;margin-bottom:6px}
+.keybox input[type=password]{width:100%;padding:7px 8px;border:1px solid #f5b83d;border-radius:6px;background:#fff;font-size:13px}
+.keybox input[type=password]:focus{outline:2px solid #f5b83d55;border-color:#d99100}
 .err{color:#b42318;font-size:12px}
 </style></head><body>
 <header><h1>해양기상 실시간 관측</h1><span class="meta" id="meta">불러오는 중…</span><span class="sp"></span>
@@ -114,10 +118,11 @@ function longBox(){const m=LMODE[SEL.tp];
  return `${LONG.map(([n,t,m2],i)=>`<button class="preset" data-l="${i}" onclick="lpreset(${i})"><b>${n}</b><span class="tag">${t}</span><small>${m2}</small></button>`).join('')}
  <div class="row"><input type="date" id="l1"> ~ <input type="date" id="l2"></div>
  <div class="sub">받는 자료: <b>${m.kind}</b>${SEL.tp!='B'?' · 시간자료 장기분은 <a href="https://data.kma.go.kr" target="_blank" rel="noopener">기상자료개방포털</a>(해양 메뉴)':''}</div>
- <div class="row" style="margin-top:8px"><input type="password" id="ukey" placeholder="내 기상청 API허브 인증키" value="${lsGet('kmaKey')}" autocomplete="off"></div>
- <label class="sub"><input type="checkbox" id="ukeep" ${lsGet('kmaKey')?'checked':''}> 이 브라우저에 키 기억하기</label>
- <div class="sub" style="line-height:1.6;margin:4px 0">· 각자 자기 키로 기상청에서 직접 받습니다. 키는 저장·기록하지 않고 기상청에 전달만 합니다.<br>
- · 키 발급: <a href="https://apihub.kma.go.kr" target="_blank" rel="noopener">기상청 API허브</a> 가입 → <b>${m.api}</b> 활용신청(무료, 즉시)</div>
+ <div class="keybox"><div class="keytitle">🔑 내 기상청 API허브 인증키</div>
+ <input type="password" id="ukey" placeholder="여기에 인증키를 붙여 넣으세요" value="${lsGet('kmaKey')}" autocomplete="off">
+ <label class="sub" style="display:block;margin-top:6px"><input type="checkbox" id="ukeep" ${lsGet('kmaKey')?'checked':''}> 이 브라우저에 키 기억하기</label>
+ <div class="sub" style="line-height:1.6;margin-top:4px">· 각자 자기 키로 기상청에서 직접 받습니다. 키는 저장·기록하지 않고 기상청에 전달만 합니다.<br>
+ · 키 발급: <a href="https://apihub.kma.go.kr" target="_blank" rel="noopener">기상청 API허브</a> 가입 → <b>${m.api}</b> 활용신청(무료, 즉시)</div></div>
  <button class="btn pri" onclick="ldl()">CSV 받기</button> <button class="btn" onclick="if(JOB)JOB.stop=true">취소</button>
  <div id="ljob" style="margin-top:8px"></div>`;}
 function lpreset(i){const y=[1,5,10][i],t=new Date(),s=new Date(t);s.setFullYear(t.getFullYear()-y);s.setDate(s.getDate()+1);
