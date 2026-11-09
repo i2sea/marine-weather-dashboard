@@ -170,9 +170,19 @@ def main():
         currents.build(out_data)
     except Exception as e:  # noqa: BLE001
         print("조류예보 단계 건너뜀:", e)
-    for fn in os.listdir(os.path.join(ROOT, "web")):  # index.html, analysis.js 등 화면 파일
-        if fn.endswith((".html", ".js", ".css")):
-            shutil.copy(os.path.join(ROOT, "web", fn), os.path.join(a.out, fn))
+    import hashlib, re
+    web = os.path.join(ROOT, "web")
+    for fn in os.listdir(web):  # index.html, analysis.js 등 화면 파일
+        if fn.endswith((".js", ".css")):
+            shutil.copy(os.path.join(web, fn), os.path.join(a.out, fn))
+    # 브라우저가 옛 js를 캐시에서 쓰지 않도록, 파일 내용이 바뀌면 주소 뒤 ?v= 값이 바뀌게 함
+    ver = lambda fn: hashlib.md5(open(os.path.join(web, fn), "rb").read()).hexdigest()[:8]
+    for fn in os.listdir(web):
+        if fn.endswith(".html"):
+            h = open(os.path.join(web, fn), encoding="utf-8").read()
+            h = re.sub(r'(src|href)="([\w.-]+\.(?:js|css))"',
+                       lambda m: f'{m.group(1)}="{m.group(2)}?v={ver(m.group(2))}"' if os.path.exists(os.path.join(web, m.group(2))) else m.group(0), h)
+            open(os.path.join(a.out, fn), "w", encoding="utf-8").write(h)
     prune_cache(a.days)
     print(f"지점 {len(latest)}개, 기준 {base} → {a.out}")
 
