@@ -49,9 +49,49 @@ def fetch_all(hours, key, workers):
     return [(t, x) for t, x, e in res if x is not None], fails
 
 
+def _first_height(v):
+    """'4.4/3.9' → 4.4, '17.5' → 17.5, '0'·'null'·'' → None"""
+    import re
+    m = re.search(r"\d+(?:\.\d+)?", str(v or ""))
+    x = float(m.group()) if m else 0.0
+    return x if x > 0 else None
+
+
+def station_heights(key):
+    """지점일람표(부이·등표)의 풍속계 높이. 일주일에 한 번만 새로 받고 나머지는 cache 재사용. 실패해도 사이트는 만듦."""
+    cf = os.path.join(mc.CACHE, "stn_heights.json")
+    old = {}
+    if os.path.exists(cf):
+        with open(cf, encoding="utf-8") as f:
+            old = json.load(f)
+        if dt.datetime.now().timestamp() - os.path.getmtime(cf) < 7 * 86400:
+            return old
+    out = dict(old)
+    ref = dt.date.today().replace(day=1)
+    for op in ("getBuoyLstTbl", "getLhawsLstTbl"):
+        for back in range(1, 13):
+            d = (ref - dt.timedelta(days=31 * back)).replace(day=1)
+            try:
+                rows = mc.items_typ02(mc.get(mc.EP["mtly"] + op, {"pageNo": 1, "numOfRows": 999, "dataType": "JSON",
+                                                                   "year": d.year, "month": f"{d.month:02d}"}, key))
+            except Exception as e:  # noqa: BLE001
+                print(f"  지점일람표 {op} {d:%Y-%m}: {e}")
+                rows = []
+            if rows:
+                for r in rows:
+                    sid = str(r.get("stn_id", "")).strip()
+                    if sid:
+                        out[sid] = {"zh": _first_height(r.get("ht_wd")), "zh_raw": str(r.get("ht_wd") or "")}
+                break
+    os.makedirs(mc.CACHE, exist_ok=True)
+    with open(cf, "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False)
+    return out
+
+
 def prune_cache(days):
     lim = (dt.datetime.now() - dt.timedelta(days=days + 2)).strftime("%Y%m%d%H%M")
-    for f in glob.glob(os.path.join(mc.CACHE, "seaobs_*.txt")):
+    for f in glob.glob(os.path.join(mc.CACHE, "seaobs_2*.txt")):
         if os.path.basename(f)[7:19] < lim:
             os.remove(f)
 
@@ -85,6 +125,12 @@ def main():
             if lat is not None and lon is not None:
                 d["meta"] = {"stn": s, "tp": r.get("TP", ""), "name": r.get("STN_KO", ""), "lat": lat, "lon": lon}
             d["rows"][r["TM"]] = {k: num(r.get(c)) for c, k in FIELDS.items()}
+
+    heights = station_heights(key)
+    for s_, d in st.items():
+        h = heights.get(s_)
+        if d["meta"] and h:
+            d["meta"].update(h)
 
     out_data = os.path.join(a.out, "data")
     ser_dir = os.path.join(out_data, "series")
