@@ -68,9 +68,9 @@ def _items(o, out):
 def fetch_page(key, code, page, rows=300):
     q = urllib.parse.urlencode({"serviceKey": key, "obsCode": code, "type": "json", "pageNo": page, "numOfRows": rows})
     last = None
-    for k in range(3):
+    for k in range(2):
         try:
-            with urllib.request.urlopen(f"{URL}?{q}", timeout=60) as r:
+            with urllib.request.urlopen(f"{URL}?{q}", timeout=25) as r:
                 t = r.read().decode("utf-8", "replace")
             break
         except Exception as e:  # noqa: BLE001
@@ -176,11 +176,23 @@ def build(out_data, workers=4, limit=230):
         except Exception as e:  # noqa: BLE001
             return c, str(e)[:160]
 
-    if todo:
+    if todo:  # 먼저 한 지점으로 연결·키를 확인하고, 안 되면 바로 건너뜀 (매시간 지도 갱신이 늦어지지 않도록)
+        t0 = time.time()
+        c0, e0 = job(todo[0])
+        print(f"조류예보 연결 확인 {c0}: {'정상' if not e0 else e0} ({time.time() - t0:.1f}초)", flush=True)
+        if e0 and ("연결 실패" in e0 or "KEY" in e0.upper() or "SERVICE_ACCESS" in e0 or "인증" in e0):
+            errs.append((c0, e0)); todo = []
+        else:
+            todo = todo[1:]
+        deadline = t0 + 600  # 한 번 실행에 최대 10분, 남은 지점은 다음 시간에 이어서
+        def job2(cn):
+            return (cn[0], "시간 초과로 다음에") if time.time() > deadline else job(cn)
         with ThreadPoolExecutor(workers) as ex:
-            for c, e in ex.map(job, todo):
+            for i, (c, e) in enumerate(ex.map(job2, todo), 1):
                 if e:
                     errs.append((c, e))
+                if i % 20 == 0:
+                    print(f"  조류예보 {i}/{len(todo)} …", flush=True)
         auth = [e for _, e in errs if "KEY" in e.upper() or "인증" in e or "SERVICE_ACCESS" in e]
         print(f"조류예보: {len(todo)}개 지점 받기, 실패 {len(errs)}개" + (f" (예: {errs[0]})" if errs else ""))
         if auth:
