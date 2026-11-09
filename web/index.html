@@ -173,8 +173,11 @@ function getKey(box){const key=document.getElementById('ukey').value.trim();if(!
 function lpreset(i){const y=[1,5,10][i],t=new Date(),s=new Date(t);s.setFullYear(t.getFullYear()-y);s.setDate(s.getDate()+1);
  document.getElementById('l1').value=iso(s);document.getElementById('l2').value=iso(t);
  document.querySelectorAll('.preset[data-l]').forEach(b=>b.classList.toggle('on',+b.dataset.l==i));}
-async function relay(path,params,key){const q=new URLSearchParams({path,...params});
- const r=await fetch(`${RELAY}?${q}`,{headers:{'X-KMA-Key':key}});const buf=await r.arrayBuffer();let t;
+async function relay(path,params,key,ms=60000){const q=new URLSearchParams({path,...params});
+ const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),ms);let r,buf;
+ try{r=await fetch(`${RELAY}?${q}`,{headers:{'X-KMA-Key':key},signal:ac.signal});buf=await r.arrayBuffer();}
+ catch(e){throw new Error(e.name=='AbortError'?'응답 없음(시간 초과)':'연결 오류: '+e.message);}
+ finally{clearTimeout(tm);}let t;
  try{t=new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch(e){t=new TextDecoder('euc-kr').decode(buf)}
  if(r.status==401||r.status==403)throw new Error('인증 실패 — 키가 맞는지, 이 API를 활용신청했는지 확인하세요');
  if(t.trim().startsWith('{')){try{const j=JSON.parse(t);if(j.result&&String(j.result.status)!='200')throw new Error((j.result.message||'API 오류')+` (${j.result.status})`);}catch(e){if(!(e instanceof SyntaxError))throw e;}}
@@ -192,6 +195,10 @@ function parseDaily(t,y,mo){let j;try{j=JSON.parse(t)}catch(e){throw new Error('
  const out=[];for(const r of leaves((j.response&&j.response.body&&j.response.body.items)||[],[])){if(!('tm'in r))continue;const lab=String(r.tm).trim();if(!/^\d+$/.test(lab))continue;
   const d=+lab,last=new Date(y,mo,0).getDate();if(d<1||d>last)continue;const row={date:`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`};
   for(const[k,v]of Object.entries(r))if(k!='tm')row[k]=cleanV(v);out.push(row);}return out;}
+const AUTHERR=/인증 실패|활용신청|401|403/;
+async function retry(fn,n=3){let last;for(let k=0;k<n;k++){if(JOB&&JOB.stop)throw new Error('취소했습니다');
+  try{return await fn()}catch(e){last=e;if(AUTHERR.test(e.message))throw e;await new Promise(r=>setTimeout(r,2000*(k+1)));}}throw last;}
+let LDONE={key:'',parts:{}};   // 받다 멈춘 구간을 기억해 두었다가 다시 누르면 남은 구간만 받음
 async function pool(tasks,n,onDone){let i=0,done=0;const res=new Array(tasks.length);
  async function w(){while(i<tasks.length){if(JOB.stop)throw new Error('취소했습니다');const k=i++;res[k]=await tasks[k]();onDone(++done);}}
  await Promise.all(Array.from({length:Math.min(n,tasks.length)},w));return res;}
@@ -201,13 +208,17 @@ async function ldl(){const box=document.getElementById('ljob'),key=getKey(box);i
  const st=SEL,m=LMODE[st.tp],now=new Date();if(b>now)b.setTime(now.getTime());
  JOB={stop:false};const t0=Date.now();let tasks=[];const f2=d=>`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
  if(st.tp=='B'){for(let s=new Date(a);s<=b;){const e=new Date(Math.min(s.getTime()+7*864e5-6e4,b.getTime()));const s1=f2(s),e1=f2(e);
-   tasks.push(async()=>parseBuoy(await relay('typ01/url/kma_buoy2.php',{tm1:s1,tm2:e1,stn:st.stn,help:'0'},key),st.stn));s=new Date(e.getTime()+6e4);}}
+   tasks.push({lab:`${s1.slice(0,8)}~${e1.slice(0,8)}`,fn:async()=>parseBuoy(await relay('typ01/url/kma_buoy2.php',{tm1:s1,tm2:e1,stn:st.stn,help:'0'},key),st.stn)});s=new Date(e.getTime()+6e4);}}
  else{for(let y=a.getFullYear(),mo=a.getMonth()+1;y<b.getFullYear()||(y==b.getFullYear()&&mo<=b.getMonth()+1);mo==12?(y++,mo=1):mo++){const yy=y,mm=mo;
-   tasks.push(async()=>parseDaily(await relay('typ02/openApi/SeaMtlyInfoService/'+m.op,{pageNo:'1',numOfRows:'99',dataType:'JSON',year:String(yy),month:String(mm).padStart(2,'0'),station:st.stn},key),yy,mm));}}
+   tasks.push({lab:`${yy}-${String(mm).padStart(2,'0')}`,fn:async()=>parseDaily(await relay('typ02/openApi/SeaMtlyInfoService/'+m.op,{pageNo:'1',numOfRows:'99',dataType:'JSON',year:String(yy),month:String(mm).padStart(2,'0'),station:st.stn},key),yy,mm)});}}
+ const jk=`${st.stn}|${st.tp}|${f2(a)}|${f2(b).slice(0,8)}`;if(LDONE.key!=jk)LDONE={key:jk,parts:{}};
+ const fails=[],reused=Object.keys(LDONE.parts).length;
+ const run=tasks.map(T=>async()=>{if(LDONE.parts[T.lab])return LDONE.parts[T.lab];
+   try{const r=await retry(T.fn);LDONE.parts[T.lab]=r;return r;}catch(e){if(AUTHERR.test(e.message)||e.message=='취소했습니다')throw e;fails.push(T.lab);return [];}});
  const show=d=>{const p=Math.floor(d*100/tasks.length),el=(Date.now()-t0)/1000,rem=d?el*(tasks.length-d)/d:0;
-  box.innerHTML=`<div class="sub">${st.name} 받는 중 ${p}% (${d}/${tasks.length})${rem>3?` · 남은 시간 약 ${rem<90?Math.round(rem)+'초':Math.round(rem/60)+'분'}`:''}</div><div class="bar"><i style="width:${p}%"></i></div>`;};
+  box.innerHTML=`<div class="sub">${st.name} 받는 중 ${p}% (${d}/${tasks.length})${fails.length?` · <span class="err">실패 ${fails.length}구간(건너뜀)</span>`:''}${reused?` · 이어받기 ${reused}구간`:''}${rem>3?` · 남은 시간 약 ${rem<90?Math.round(rem)+'초':Math.round(rem/60)+'분'}`:''}</div><div class="bar"><i style="width:${p}%"></i></div>`;};
  show(0);
- try{const parts=await pool(tasks,4,show);let rows=[].concat(...parts);let cols,head;
+ try{const parts=await pool(run,4,show);let rows=[].concat(...parts);let cols,head;
   if(st.tp=='B'){const lo=f2(a),hi=f2(b);rows=rows.filter(r=>r.TM>=lo&&r.TM<=hi);const seen=new Set();rows=rows.filter(r=>!seen.has(r.TM)&&seen.add(r.TM));rows.sort((x,y)=>x.TM<y.TM?-1:1);
    cols=BCOLS.filter(c=>c=='TM'||c=='STN'||rows.some(r=>r[c]!==''));head=c=>BHEAD[c]||c;}
   else{const lo=iso(a),hi=iso(b);rows=rows.filter(r=>r.date>=lo&&r.date<=hi);rows.sort((x,y)=>x.date<y.date?-1:1);
@@ -219,8 +230,9 @@ async function ldl(){const box=document.getElementById('ljob'),key=getKey(box);i
   const fn=`${st.name}_${st.stn}_${st.tp=='B'?'30분':'일'}_${iso(a).replace(/-/g,'')}-${iso(b).replace(/-/g,'')}.csv`;
   const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),el=document.createElement('a');el.href=u;el.download=fn;el.click();
   if(st.tp=='B')dsFromBuoy(st,rows,a,b);else dsFromDaily(st,rows,a,b);
-  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div><button class="btn" style="margin-top:4px" onclick="DSEL=DSL[DSL.length-1].id;openAnalysis()">📊 받은 자료 분석하기</button>`;}
- catch(e){box.innerHTML=`<span class="err">${e.message}</span>`;}
+  fails.sort();if(!fails.length)LDONE={key:'',parts:{}};
+  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div>${fails.length?`<div class="err" style="margin-top:4px">받지 못한 구간 ${fails.length}개: ${fails.slice(0,6).join(', ')}${fails.length>6?' …':''}<br>‘CSV 받기’를 다시 누르면 받은 구간은 그대로 두고 이 구간만 다시 받습니다.</div>`:''}<button class="btn" style="margin-top:4px" onclick="DSEL=DSL[DSL.length-1].id;openAnalysis()">📊 받은 자료 분석하기</button>`;}
+ catch(e){const k=Object.keys(LDONE.parts).length;box.innerHTML=`<span class="err">${e.message}</span>${k&&!AUTHERR.test(e.message)?`<div class="sub">받은 ${k}구간은 기억해 두었습니다 — 다시 누르면 이어서 받습니다.</div>`:''}`;}
  finally{JOB=null;}}
 function dlBox(){return `<div class="box"><h3>자료 내려받기 (CSV)</h3>${PRESETS.map((p,i)=>`<button class="preset" data-i="${i}" onclick="preset(${i})"><b>${p.n}</b>${p.t?`<span class="tag">${p.t}</span>`:''}<small>${p.m}</small></button>`).join('')}
  <div class="row"><input type="date" id="d1" onchange="est()"> ~ <input type="date" id="d2" onchange="est()"></div>
@@ -297,7 +309,8 @@ async function rwDl(lat,lon){const box=document.getElementById('rwjob'),key=getK
   const fn=`재현바람장_${lat}_${lon}_${hs.join('-')}m_${itv}분_${document.getElementById('r1').value.replace(/-/g,'')}-${document.getElementById('r2').value.replace(/-/g,'')}.csv`;
   const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),el=document.createElement('a');el.href=u;el.download=fn;el.click();
   dsFromRawm(lat,lon,hs,itv,rows);
-  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div><button class="btn" style="margin-top:4px" onclick="DSEL=DSL[DSL.length-1].id;openAnalysis()">📊 받은 자료 분석하기</button>`;}
+  fails.sort();if(!fails.length)LDONE={key:'',parts:{}};
+  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div>${fails.length?`<div class="err" style="margin-top:4px">받지 못한 구간 ${fails.length}개: ${fails.slice(0,6).join(', ')}${fails.length>6?' …':''}<br>‘CSV 받기’를 다시 누르면 받은 구간은 그대로 두고 이 구간만 다시 받습니다.</div>`:''}<button class="btn" style="margin-top:4px" onclick="DSEL=DSL[DSL.length-1].id;openAnalysis()">📊 받은 자료 분석하기</button>`;}
  catch(e){box.innerHTML=`<span class="err">${e.message}</span>`;}finally{JOB=null;}}
 PANEL0=document.getElementById('panel').innerHTML;
 window.addEventListener('resize',()=>map.invalidateSize());
