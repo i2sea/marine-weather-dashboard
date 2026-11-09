@@ -91,7 +91,7 @@ function head(){const s=SEL;document.getElementById('head').innerHTML=`<h2>${s.n
 function toPanel(){if(innerWidth<820)setTimeout(()=>document.querySelector('aside').scrollIntoView({behavior:'smooth'}),50);}
 function select(s){SEL=s;SER=null;toPanel();document.getElementById('panel').innerHTML=`<div id="head"></div>
  <div class="tabs">${[24,72,168,720].map(h=>`<button data-h="${h}" onclick="hours=${h};loadSeries()">${h/24}일</button>`).join('')}<span class="sub" id="sst" style="margin-left:6px"></span></div>
- <canvas id="ch" height="230"></canvas><button class="btn" style="margin-top:6px" onclick="DSEL='ser-${s.stn}';openAnalysis()">📊 최근 30일 풍황·작업 가능일 분석</button>${hubBox()}${dlBox()}`;head();hubNow();loadSeries().then(()=>{preset(1);if(document.getElementById('l1'))lpreset(1);});}
+ <canvas id="ch" height="230"></canvas><button class="btn" style="margin-top:6px" onclick="DSEL='ser-${s.stn}';AN.tab='${s.ws==null?'wave':'wind'}';openAnalysis()">📊 최근 30일 ${s.ws==null?'파랑':'풍황·파랑'}·작업 가능일 분석</button>${hubBox()}${dlBox()}`;head();hubNow();loadSeries().then(()=>{preset(1);if(document.getElementById('l1'))lpreset(1);});}
 let SER=null,LASTROWS=[];
 // ===== 허브높이 환산 =====
 const HUB=(()=>{let o={};try{o=JSON.parse(localStorage.getItem('hub')||'{}')}catch(e){}return {h:140,m:'pow',a:0.11,z0:0.0002,on:true,...o};})();

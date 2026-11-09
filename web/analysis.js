@@ -27,12 +27,14 @@ function dsFromSER(st, ser) {
 // 장기 받기(부이 30분) → 보관함
 function dsFromBuoy(st, rows, a, b) {
   dsAdd({ id: `buoy-${st.stn}-${iso(a)}-${iso(b)}`, name: `${st.name}(${st.stn}) ${iso(a)}~${iso(b)}`, kind: '부이 30분', z: zOf(st), stn: st,
-    t: rows.map(r => tm12(r.TM)), ws: rows.map(r => num(r.WS1)), wd: rows.map(r => num(r.WD1)), wh: rows.map(r => num(r.WH_SIG)) });
+    t: rows.map(r => tm12(r.TM)), ws: rows.map(r => num(r.WS1)), wd: rows.map(r => num(r.WD1)), wh: rows.map(r => num(r.WH_SIG)),
+    hmax: rows.map(r => num(r.WH_MAX)), wp: rows.map(r => num(r.WP)), wo: rows.map(r => num(r.WO)) });
 }
 // 장기 받기(등표·파고부이 일자료) → 보관함
 function dsFromDaily(st, rows, a, b) {
   dsAdd({ id: `day-${st.stn}-${iso(a)}-${iso(b)}`, name: `${st.name}(${st.stn}) 일자료 ${iso(a)}~${iso(b)}`, kind: '일자료(일평균)', daily: true, z: zOf(st), stn: st,
-    t: rows.map(r => new Date(r.date + 'T12:00').getTime()), ws: rows.map(r => num(r.ws)), wd: rows.map(() => null), wh: rows.map(r => num(r.wh_sig)) });
+    t: rows.map(r => new Date(r.date + 'T12:00').getTime()), ws: rows.map(r => num(r.ws)), wd: rows.map(() => null), wh: rows.map(r => num(r.wh_sig)),
+    hmax: rows.map(r => num(r.wh_max_)), wp: rows.map(r => num(r.wp)) });
 }
 // 재현바람장 → 보관함 (고도별로 하나씩)
 function dsFromRawm(lat, lon, hs, itv, rows) {
@@ -61,20 +63,21 @@ async function dsUpload(file) {
   const guess = re => head.findIndex(h => re.test(h));
   UPL = { name: file.name.replace(/\.[^.]+$/, ''), head, rows,
     it: Math.max(0, guess(/시각|시간|일시|날짜|date|time|tm/i)),
-    iws: guess(/풍속(?!.*돌풍)|ws|wind ?speed|spd/i), iwd: guess(/풍향|wd|dir/i), iwh: guess(/유의파고|파고|hs|wh|wave/i) };
+    iws: guess(/풍속(?!.*돌풍)|ws|wind ?speed|spd/i), iwd: guess(/풍향|wd|wind ?dir/i), iwh: guess(/유의파고|^파고|hs|wh|wave ?height/i),
+    iwp: guess(/파주기|tp|period|wp/i), iwo: guess(/파향|wave ?dir|mwd|wo/i) };
   dsRender();
 }
 function uplColSel(id, cur, allowNone) {
   return `<select id="${id}">${allowNone ? `<option value="-1" ${cur < 0 ? 'selected' : ''}>(없음)</option>` : ''}${UPL.head.map((h, i) => `<option value="${i}" ${i === cur ? 'selected' : ''}>${h || '열' + (i + 1)}</option>`).join('')}</select>`;
 }
 function dsUploadAdd() {
-  const g = id => +document.getElementById(id).value, it = g('u_t'), iws = g('u_ws'), iwd = g('u_wd'), iwh = g('u_wh');
+  const g = id => +document.getElementById(id).value, it = g('u_t'), iws = g('u_ws'), iwd = g('u_wd'), iwh = g('u_wh'), iwp = g('u_wp'), iwo = g('u_wo');
   const z = num(document.getElementById('u_z').value);
   const pts = [];
-  for (const r of UPL.rows) { const t = parseTime(r[it]); if (t == null) continue; pts.push([t, iws >= 0 ? num(r[iws]) : null, iwd >= 0 ? num(r[iwd]) : null, iwh >= 0 ? num(r[iwh]) : null]); }
+  for (const r of UPL.rows) { const t = parseTime(r[it]); if (t == null) continue; pts.push([t, iws >= 0 ? num(r[iws]) : null, iwd >= 0 ? num(r[iwd]) : null, iwh >= 0 ? num(r[iwh]) : null, iwp >= 0 ? num(r[iwp]) : null, iwo >= 0 ? num(r[iwo]) : null]); }
   if (!pts.length) { alert('시각 열을 읽지 못했습니다. 시각 열을 확인해 주세요.'); return; }
   pts.sort((a, b) => a[0] - b[0]);
-  dsAdd({ id: 'up-' + UPL.name + '-' + Date.now(), name: UPL.name + ' (올린 파일)', kind: '직접 측정', z, t: pts.map(p => p[0]), ws: pts.map(p => p[1]), wd: pts.map(p => p[2]), wh: pts.map(p => p[3]) });
+  dsAdd({ id: 'up-' + UPL.name + '-' + Date.now(), name: UPL.name + ' (올린 파일)', kind: '직접 측정', z, t: pts.map(p => p[0]), ws: pts.map(p => p[1]), wd: pts.map(p => p[2]), wh: pts.map(p => p[3]), wp: pts.map(p => p[4]), wo: pts.map(p => p[5]) });
   DSEL = DSL[DSL.length - 1].id; AN.mcp.tgt = DSEL; UPL = null; dsRender(); anRun();
 }
 
@@ -86,11 +89,11 @@ function openAnalysis() {
   <div class="box"><h3>자료 보관함</h3><div id="dslist"></div>
    <label class="btn" style="display:inline-block;margin-top:6px">📂 측정 자료 CSV 올리기<input type="file" accept=".csv,.txt" style="display:none" onchange="dsUpload(this.files[0]);this.value=''"></label>
    <div id="upl"></div></div>
-  <div class="tabs" id="antabs">${[['wind', '풍황 요약'], ['work', '작업 가능일'], ['mcp', '장기 보정(MCP)']].map(([k, n]) => `<button data-k="${k}" onclick="AN.tab='${k}';anRun()">${n}</button>`).join('')}</div>
+  <div class="tabs" id="antabs">${[['wind', '풍황 요약'], ['wave', '파랑 요약'], ['work', '작업 가능일'], ['mcp', '장기 보정(MCP)']].map(([k, n]) => `<button data-k="${k}" onclick="AN.tab='${k}';anRun()">${n}</button>`).join('')}</div>
   <div id="anout"></div>`;
   dsRender(); anRun();
 }
-const AN = { tab: 'wind', hub: false, work: { hs: 1.5, ws: 12, hrs: 12 }, mcp: { tgt: null, ref: null, sector: false } };
+const AN = { tab: 'wind', hub: false, design: { d: 30, T: 50, r: 1.8 }, work: { hs: 1.5, ws: 12, hrs: 12 }, mcp: { tgt: null, ref: null, sector: false } };
 
 function dsRender() {
   const el = document.getElementById('dslist'); if (!el) return;
@@ -101,7 +104,7 @@ function dsRender() {
   const u = document.getElementById('upl'); if (!u) return;
   u.innerHTML = UPL ? `<div class="box" style="margin-top:8px"><h3>${UPL.name} — 열 맞추기</h3>
     <div class="sub">${UPL.rows.length.toLocaleString()}줄 · 자동으로 고른 열이 맞는지 확인하세요</div>
-    <div class="grid2">시각 ${uplColSel('u_t', UPL.it)} 풍속 ${uplColSel('u_ws', UPL.iws, true)} 풍향 ${uplColSel('u_wd', UPL.iwd, true)} 유의파고 ${uplColSel('u_wh', UPL.iwh, true)}
+    <div class="grid2">시각 ${uplColSel('u_t', UPL.it)} 풍속 ${uplColSel('u_ws', UPL.iws, true)} 풍향 ${uplColSel('u_wd', UPL.iwd, true)} 유의파고 ${uplColSel('u_wh', UPL.iwh, true)} 파주기 ${uplColSel('u_wp', UPL.iwp, true)} 파향 ${uplColSel('u_wo', UPL.iwo, true)}
     측정 높이(m) <input id="u_z" type="number" step="0.1" placeholder="예: 100"></div>
     <button class="btn pri" onclick="dsUploadAdd()">보관함에 넣기</button> <button class="btn" onclick="UPL=null;dsRender()">취소</button></div>` : '';
 }
@@ -115,7 +118,7 @@ function anRun() {
   if (AN.tab === 'mcp') return mcpView(out);
   const d = dsGet(DSEL);
   if (!d) { out.innerHTML = '<div class="sub">위 보관함에서 분석할 자료를 고르세요.</div>'; return; }
-  if (AN.tab === 'wind') windView(out, d); else workView(out, d);
+  if (AN.tab === 'wind') windView(out, d); else if (AN.tab === 'wave') waveView(out, d); else workView(out, d);
 }
 
 // ===================================================================== 풍황 요약
@@ -155,7 +158,7 @@ function windStats(d) {
 }
 
 function windView(out, d) {
-  if (!dsHas(d, 'ws')) { out.innerHTML = '<div class="sub">이 자료에는 풍속이 없습니다 (파고부이 등). 작업 가능일 탭에서 파고 분석을 볼 수 있습니다.</div>'; return; }
+  if (!dsHas(d, 'ws')) { out.innerHTML = '<div class="sub">이 자료에는 풍속이 없습니다 (파고부이 등). <b>파랑 요약</b> 탭에서 파고를 분석하세요.</div>'; return; }
   const S = windStats(d), zt = AN.hub && d.z ? `허브 ${HUB.h}m 환산` : (d.z ? `측정높이 ${d.z}m` : '측정높이 그대로');
   out.innerHTML = `<div class="row" style="font-size:13px;flex-wrap:wrap"><label><input type="checkbox" ${AN.hub ? 'checked' : ''} ${d.z ? '' : 'disabled'} onchange="AN.hub=this.checked;anRun()"> 허브높이 ${HUB.h}m로 환산해서 보기</label>
    ${d.z ? '' : '<span class="sub">(측정 높이를 모르는 자료라 환산할 수 없습니다)</span>'}</div>
@@ -181,7 +184,7 @@ function windView(out, d) {
     options: { animation: false, plugins: { legend: { display: false } }, scales: { y: { title: { display: true, text: 'm/s' } } } } });
   AN.last = { d, S, zt };
 }
-function roseSVG(S) {
+function roseSVG(S, BINS = RBINS, unit = 'm/s') {
   const W = 300, R = 120, cx = W / 2, cy = W / 2 + 4, tot = S.rn;
   const pct = S.rose.map(r => r.map(v => v * 100 / tot)), mx = Math.max(...pct.map(r => r.reduce((a, b) => a + b, 0))) || 1;
   const sc = R / mx, a0 = Math.PI / 16; let p = '';
@@ -190,12 +193,12 @@ function roseSVG(S) {
     let r0 = 0; const ang = s * Math.PI / 8;
     bins.forEach((v, b) => { if (!v) return; const r1 = r0 + v * sc;
       const pt = (r, a) => [cx + r * Math.sin(a), cy - r * Math.cos(a)].map(x => x.toFixed(1)).join(',');
-      p += `<path d="M${pt(r0, ang - a0)} L${pt(r1, ang - a0)} A${r1},${r1} 0 0 1 ${pt(r1, ang + a0)} L${pt(r0, ang + a0)} A${r0},${r0} 0 0 0 ${pt(r0, ang - a0)}Z" fill="${RCOL[b]}" stroke="#fff" stroke-width=".6"><title>${SECT[s]} ${RBINS[b][0]}~${RBINS[b][1] === 99 ? '' : RBINS[b][1]}m/s: ${f(v, 1)}%</title></path>`;
+      p += `<path d="M${pt(r0, ang - a0)} L${pt(r1, ang - a0)} A${r1},${r1} 0 0 1 ${pt(r1, ang + a0)} L${pt(r0, ang + a0)} A${r0},${r0} 0 0 0 ${pt(r0, ang - a0)}Z" fill="${RCOL[b]}" stroke="#fff" stroke-width=".6"><title>${SECT[s]} ${BINS[b][0]}~${BINS[b][1] === 99 ? '' : BINS[b][1]}${unit}: ${f(v, 1)}%</title></path>`;
       r0 = r1; });
   });
   const lab = ['N', 'E', 'S', 'W'].map((t, i) => { const a = i * Math.PI / 2; return `<text x="${cx + (R + 12) * Math.sin(a)}" y="${cy - (R + 12) * Math.cos(a) + 4}" font-size="11" font-weight="700" text-anchor="middle">${t}</text>`; }).join('');
-  const leg = RBINS.map(([lo, hi], b) => `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px"><i style="width:10px;height:10px;background:${RCOL[b]};display:inline-block"></i>${hi === 99 ? lo + '+' : lo + '–' + hi}</span>`).join('');
-  return `<svg viewBox="0 0 ${W} ${W + 8}" style="width:100%;max-width:320px;display:block;margin:auto">${rings}${p}${lab}</svg><div class="sub" style="text-align:center">${leg} m/s</div>`;
+  const leg = BINS.map(([lo, hi], b) => `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px"><i style="width:10px;height:10px;background:${RCOL[b]};display:inline-block"></i>${hi === 99 ? lo + '+' : lo + '–' + hi}</span>`).join('');
+  return `<svg viewBox="0 0 ${W} ${W + 8}" style="width:100%;max-width:320px;display:block;margin:auto">${rings}${p}${lab}</svg><div class="sub" style="text-align:center">${leg} ${unit}</div>`;
 }
 function dlText(name, text) { const u = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv' })), a = document.createElement('a'); a.href = u; a.download = name; a.click(); }
 function windCSV() {
@@ -208,6 +211,143 @@ function windCSV() {
   L.push('', '[바람장미 빈도(%)]', '방위,' + RBINS.map(([lo, hi]) => hi === 99 ? `${lo}+` : `${lo}-${hi}`).join(',') + ',합계');
   S.rose.forEach((r, s) => L.push(`${SECT[s]},` + r.map(v => (v * 100 / (S.rn || 1)).toFixed(3)).join(',') + ',' + (r.reduce((a, b) => a + b, 0) * 100 / (S.rn || 1)).toFixed(3)));
   dlText(`풍황요약_${d.name.replace(/[\\/:*?"<>|\s]+/g, '_')}.csv`, L.join('\r\n'));
+}
+
+// ===================================================================== 파랑 요약
+const HBINS = [[0, 0.5], [0.5, 1], [1, 2], [2, 3], [3, 99]];
+function waveLen(T, d) { const g = 9.81, L0 = g * T * T / (2 * Math.PI); if (!(d > 0)) return L0; let L = L0; for (let i = 0; i < 60; i++) L = L0 * Math.tanh(2 * Math.PI * d / L); return L; }
+function periodFit(d, p90) {  // 유의파고 상위 10% 시간의 T = a·H^b (로그 회귀)
+  if (!d.wp) return null; const xs = [], ys = [];
+  for (let i = 0; i < d.t.length; i++) { const h = d.wh[i], t = d.wp[i]; if (h != null && t != null && h >= p90 && h > 0 && t > 0) { xs.push(Math.log(h)); ys.push(Math.log(t)); } }
+  if (xs.length < 20) return null; const g = linreg(xs, ys); if (!g) return null; return { a: Math.exp(g.b), b: g.a, n: xs.length, r2: g.r2 };
+}
+function designSet() { const g = (id, dflt) => { const v = +document.getElementById(id).value; return v > 0 ? v : dflt; };
+  const hv = +document.getElementById('dz_h').value; AN.design = { d: g('dz_d', 30), T: g('dz_T', 50), r: g('dz_r', 1.8), hs: hv > 0 ? hv : null }; designCalc(); }
+function designCalc() {
+  const el = document.getElementById('dz_out'); if (!el || !AN.lastWave) return; const { d, S } = AN.lastWave, D = AN.design;
+  let hs = null, hsSrc = '';
+  if (D.hs) { hs = D.hs; hsSrc = '직접 입력 (예: 해양수산부 심해설계파)'; }
+  else if (S.gum) { hs = S.gum.mu - S.gum.beta * Math.log(-Math.log(1 - 1 / D.T)); hsSrc = `검벨 극치 ${D.T}년 (연 최대 ${S.full.length}개)`; }
+  if (!hs) { el.innerHTML = `<div class="err">극치 계산에는 자료 3년 이상이 필요합니다. 부이 5·10년 자료를 받거나, 설계 H<sub>1/3</sub>를 직접 넣으세요.</div>`; return; }
+  const pf = periodFit(d, S.p90), T = pf ? pf.a * Math.pow(hs, pf.b) : 3.3 * Math.sqrt(hs);
+  const L = waveLen(T, D.d), L0 = 9.81 * T * T / (2 * Math.PI), Hb = 0.142 * L * Math.tanh(2 * Math.PI * D.d / L), Hmax = D.r * hs, Hd = Math.min(Hmax, Hb);
+  const regime = D.d / L0 > 0.5 ? '심해파' : D.d / L0 < 0.05 ? '천해파' : '천이영역';
+  el.innerHTML = `<table class="tbl"><tr><th>항목</th><th>값</th><th>근거</th></tr>
+   <tr><td>설계 유의파고 H<sub>1/3</sub></td><td><b>${f(hs, 2)} m</b></td><td style="text-align:left">${hsSrc}</td></tr>
+   <tr><td>최대파고 H<sub>max</sub></td><td><b>${f(Hmax, 2)} m</b></td><td style="text-align:left">${D.r} × H<sub>1/3</sub></td></tr>
+   <tr><td>유의파 주기 T<sub>1/3</sub></td><td><b>${f(T, 1)} s</b></td><td style="text-align:left">${pf ? `T = ${f(pf.a, 2)}·H<sup>${f(pf.b, 2)}</sup> (상위 10% ${pf.n.toLocaleString()}개, R² ${f(pf.r2, 2)})` : '<span class="err">주기 자료 없음 → 경험식 T≈3.3√H (참고)</span>'}</td></tr>
+   <tr><td>파장 L (수심 ${D.d}m)</td><td><b>${f(L, 1)} m</b></td><td style="text-align:left">심해 파장 L<sub>0</sub>=${f(L0, 1)}m · d/L<sub>0</sub>=${f(D.d / L0, 3)} (${regime})</td></tr>
+   <tr><td>쇄파 한계 H<sub>b</sub></td><td><b>${f(Hb, 2)} m</b></td><td style="text-align:left">Miche 0.142·L·tanh(2πd/L)</td></tr>
+   <tr><td>검토 파고</td><td><b style="color:#7a2be2">${f(Hd, 2)} m</b></td><td style="text-align:left">${Hmax > Hb ? '<span class="err">H<sub>max</sub>가 쇄파 한계를 넘어 쇄파 한계값 적용</span>' : 'H<sub>max</sub> (쇄파 한계 이내)'}</td></tr></table>
+   <button class="btn" onclick="designCSV()">설계파 CSV 받기</button>`;
+  AN.lastDesign = { d, hs, hsSrc, Hmax, T, pf, L, L0, Hb, Hd, D, regime };
+}
+function designCSV() { const x = AN.lastDesign, L = [`자료,${x.d.name}`, `기간,${dsSpan(x.d)}`, '※ 관측소 관측자료로 낸 간이 추정값 (설계에는 해양수산부 심해설계파·천해 변형 검토 결과 사용)', '',
+  '항목,값,단위,근거', `수심,${x.D.d},m,입력`, `재현기간,${x.D.T},년,입력`, `설계 유의파고 H1/3,${x.hs.toFixed(3)},m,${x.hsSrc}`, `최대파고 Hmax,${x.Hmax.toFixed(3)},m,${x.D.r} x H1/3`,
+  `유의파 주기 T1/3,${x.T.toFixed(2)},s,${x.pf ? `T=${x.pf.a.toFixed(3)}*H^${x.pf.b.toFixed(3)} (상위10% ${x.pf.n}개)` : '경험식 3.3*sqrt(H)'}`,
+  `파장 L,${x.L.toFixed(2)},m,분산관계식 (L0=${x.L0.toFixed(2)}m / ${x.regime})`, `쇄파 한계 Hb,${x.Hb.toFixed(3)},m,Miche 0.142*L*tanh(2pi d/L)`, `검토 파고,${x.Hd.toFixed(3)},m,min(Hmax / Hb)`];
+  dlText(`설계파_${x.d.name.replace(/[\\/:*?"<>|\s]+/g, '_')}.csv`, L.join('\r\n')); }
+function pctl(sorted, p) { if (!sorted.length) return null; const i = (sorted.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i); return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo); }
+function waveStats(d) {
+  const n = d.t.length, wh = d.wh, hv = [], hmx = d.hmax || [];
+  let mx = -1, mxi = -1;
+  for (let i = 0; i < n; i++) if (wh[i] != null) { hv.push(wh[i]); if (wh[i] > mx) { mx = wh[i]; mxi = i; } }
+  const sorted = [...hv].sort((a, b) => a - b), mean = hv.reduce((a, b) => a + b, 0) / (hv.length || 1);
+  const step = d.daily ? 1440 : stepMin(d), expect = n ? Math.round((d.t[n - 1] - d.t[0]) / 6e4 / step) + 1 : 0;
+  // 빈도 (0.25m)
+  const bw = 0.25, nb = Math.min(60, Math.ceil((mx > 0 ? mx : 1) / bw) + 1), hist = new Array(nb).fill(0);
+  for (const v of hv) hist[Math.min(nb - 1, Math.floor(v / bw))]++;
+  // 초과확률
+  const exc = []; for (let h = 0; h <= Math.ceil(mx * 4) / 4 + 1e-9; h += 0.25) { exc.push([+h.toFixed(2), hv.filter(v => v > h).length * 100 / (hv.length || 1)]); }
+  // 월별 평균·최대
+  const mon = Array.from({ length: 12 }, () => ({ s: 0, n: 0, mx: null }));
+  for (let i = 0; i < n; i++) if (wh[i] != null) { const m = mon[new Date(d.t[i]).getMonth()]; m.s += wh[i]; m.n++; m.mx = m.mx == null ? wh[i] : Math.max(m.mx, wh[i]); }
+  // 연 최대 → 극치(검벨, 적률법)
+  const ym = new Map(); for (let i = 0; i < n; i++) if (wh[i] != null) { const y = new Date(d.t[i]).getFullYear(); ym.set(y, Math.max(ym.get(y) ?? -1, wh[i])); }
+  const years = [...ym].sort((a, b) => a[0] - b[0]);
+  // 해마다 자료가 70% 이상인 해만 극치에 사용
+  const perYear = new Map(); for (let i = 0; i < n; i++) if (wh[i] != null) { const y = new Date(d.t[i]).getFullYear(); perYear.set(y, (perYear.get(y) || 0) + 1); }
+  const full = years.filter(([y]) => (perYear.get(y) || 0) >= 0.7 * (365 * 1440 / step)), am = full.map(x => x[1]);
+  let gum = null;
+  if (am.length >= 3) { const m = am.reduce((a, b) => a + b, 0) / am.length, sd = Math.sqrt(am.reduce((a, b) => a + (b - m) ** 2, 0) / (am.length - 1)), beta = sd * Math.sqrt(6) / Math.PI, mu = m - 0.5772 * beta;
+    gum = { mu, beta, rp: [10, 30, 50, 100].map(T => [T, mu - beta * Math.log(-Math.log(1 - 1 / T))]) }; }
+  // 파고-파주기 결합 빈도
+  let joint = null;
+  if (d.wp && d.wp.some(v => v != null)) { const tb = 1, hbins = Math.ceil((mx > 0 ? mx : 1) / 0.5), tmax = Math.min(20, Math.ceil(Math.max(...d.wp.filter(v => v != null)) || 1));
+    joint = { hb: hbins, tm: tmax, c: Array.from({ length: hbins }, () => new Array(tmax).fill(0)), n: 0 };
+    for (let i = 0; i < n; i++) if (wh[i] != null && d.wp[i] != null) { joint.c[Math.min(hbins - 1, Math.floor(wh[i] / 0.5))][Math.min(tmax - 1, Math.floor(d.wp[i] / tb))]++; joint.n++; } }
+  // 파향 장미
+  let rose = null, rn = 0;
+  if (d.wo && d.wo.some(v => v != null)) { rose = SECT.map(() => HBINS.map(() => 0));
+    for (let i = 0; i < n; i++) if (wh[i] != null && d.wo[i] != null) { const s = Math.round(((d.wo[i] % 360) + 360) % 360 / 22.5) % 16; const b = HBINS.findIndex(([lo, hi]) => wh[i] >= lo && wh[i] < hi); rose[s][b < 0 ? HBINS.length - 1 : b]++; rn++; } }
+  const hmaxAll = hmx.filter(v => v != null);
+  return { mean, mx, mxt: mxi >= 0 ? d.t[mxi] : null, p50: pctl(sorted, .5), p90: pctl(sorted, .9), p99: pctl(sorted, .99), valid: hv.length, expect, rec: expect ? Math.min(100, hv.length * 100 / expect) : 0,
+    hist, bw, exc, mon, years, full, gum, joint, rose, rn, hmaxMax: hmaxAll.length ? Math.max(...hmaxAll) : null };
+}
+function waveView(out, d) {
+  if (!dsHas(d, 'wh')) { out.innerHTML = '<div class="sub">이 자료에는 유의파고가 없습니다 (등표·재현바람장 등).</div>'; return; }
+  const S = waveStats(d), dt = S.mxt ? new Date(S.mxt) : null;
+  out.innerHTML = `${d.daily ? '<div class="err" style="margin:4px 0">일평균 유의파고 자료라 최대값·초과확률이 실제보다 작게 나옵니다. 참고용으로만 보세요.</div>' : ''}
+  <div class="grid">
+   <div class="kv"><span>평균 유의파고</span><b>${f(S.mean, 2)} m</b></div>
+   <div class="kv"><span>최대 유의파고</span><b>${f(S.mx, 2)} m</b></div>
+   <div class="kv"><span>최대 발생 시각</span><b style="font-size:12px">${dt ? `${iso(dt)} ${String(dt.getHours()).padStart(2, '0')}시` : '–'}</b></div>
+   <div class="kv"><span>50% / 90% 유의파고</span><b>${f(S.p50, 2)} / ${f(S.p90, 2)}</b></div>
+   <div class="kv"><span>99% 유의파고</span><b>${f(S.p99, 2)} m</b></div>
+   <div class="kv"><span>${S.hmaxMax != null ? '최대파고(Hmax) 최고' : '자료 회수율'}</span><b>${S.hmaxMax != null ? f(S.hmaxMax, 1) + ' m' : f(S.rec, 1) + '%'}</b></div></div>
+  <div class="sub">기간 ${dsSpan(d)} · 자료 ${S.valid.toLocaleString()}개 · 회수율 ${f(S.rec, 1)}% · "90% 유의파고" = 전체 시간의 90%가 이 값 이하</div>
+  <h3 style="font-size:14px;margin:10px 0 4px">유의파고 빈도 (0.25 m 구간)</h3><canvas id="c_whist" height="190"></canvas>
+  <h3 style="font-size:14px;margin:10px 0 4px">초과 확률 (유의파고가 이 값을 넘는 시간 비율)</h3><canvas id="c_wexc" height="190"></canvas>
+  <h3 style="font-size:14px;margin:10px 0 4px">월별 평균·최대 유의파고</h3><canvas id="c_wmon" height="180"></canvas>
+  ${S.rose ? `<h3 style="font-size:14px;margin:10px 0 4px">파향 장미 (파도가 오는 방향 · 유의파고 구간)</h3>${roseSVG({ rose: S.rose, rn: S.rn }, HBINS, 'm')}` : ''}
+  ${S.joint ? `<h3 style="font-size:14px;margin:10px 0 4px">유의파고–파주기 결합 빈도 (%)</h3><div style="overflow-x:auto">${jointTable(S.joint)}</div>` : ''}
+  <h3 style="font-size:14px;margin:10px 0 4px">극치 (재현기간별 유의파고)</h3>
+  ${S.gum ? `<table class="tbl"><tr><th>재현기간</th>${S.gum.rp.map(([T]) => `<th>${T}년</th>`).join('')}</tr><tr><td>유의파고(m)</td>${S.gum.rp.map(([, h]) => `<td><b>${f(h, 2)}</b></td>`).join('')}</tr></table>
+   <div class="sub" style="line-height:1.6">연 최대값 ${S.full.length}개(${S.full.map(([y, h]) => `${y}: ${f(h, 1)}m`).join(', ')})를 검벨 분포(적률법)에 맞춘 값입니다.${S.full.length < 10 ? ' <span class="err">자료 연수가 10년보다 짧아 오차가 큽니다. 설계에는 정식 극치 분석(장기 파랑 자료·추산)을 쓰세요.</span>' : ''}</div>`
+    : `<div class="sub">자료가 70% 이상 있는 해가 3년 이상이어야 계산합니다 (지금 ${S.full.length}년). 부이의 5·10년 자료를 받아 보세요.</div>`}
+  <div class="box" style="border-color:#7a2be2"><h3>🏗 구조물(기초) 검토용 설계파 — 간이 추정</h3>
+   <div class="row" style="font-size:13px;flex-wrap:wrap">수심 <input id="dz_d" type="number" step="0.5" value="${AN.design.d}" style="flex:none;width:64px">m
+    · 재현기간 <input id="dz_T" type="number" step="1" value="${AN.design.T}" style="flex:none;width:56px">년
+    · Hmax/Hs <input id="dz_r" type="number" step="0.05" value="${AN.design.r}" style="flex:none;width:56px">
+    · 설계 H<sub>1/3</sub> 직접 <input id="dz_h" type="number" step="0.1" value="${AN.design.hs ?? ''}" placeholder="비우면 극치" style="flex:none;width:86px">m
+    <button class="btn pri" onclick="designSet()">계산</button></div>
+   <div id="dz_out"></div>
+   <div class="sub" style="line-height:1.6;margin-top:6px">· 설계 유의파고: 위 극치(검벨) 결과에서 재현기간 값, 또는 직접 넣은 값 (공식 설계파가 있으면 넣으세요) · 최대파고: Hmax = (Hmax/Hs) × Hs, 기본 1.8 (쇄파대 밖에서 흔히 쓰는 값)<br>
+   · 주기: 이 자료에서 유의파고 상위 10% 시간의 파고–주기 관계(T = a·H<sup>b</sup>)로 추정 · 파장: 수심을 넣은 분산관계식 · 쇄파 한계: Miche 식 H<sub>b</sub> = 0.142·L·tanh(2πd/L)<br>
+   · <b>관측소 위치의 관측 자료로 낸 참고값입니다.</b> 실제 설계에는 해양수산부 심해설계파(재현기간별 설계파 추산)와 사업지 천해 변형(굴절·천수) 검토 결과를 쓰세요.</div></div>
+  <button class="btn" style="margin-top:8px" onclick="waveCSV()">파랑 요약 CSV 받기</button>`;
+  chart2('c_whist', { type: 'bar', data: { labels: S.hist.map((_, i) => `${(i * S.bw).toFixed(2)}`), datasets: [{ label: '빈도(%)', data: S.hist.map(v => v * 100 / (S.valid || 1)), backgroundColor: '#0e9384' }] },
+    options: { animation: false, plugins: { legend: { display: false } }, scales: { x: { title: { display: true, text: '유의파고 구간 시작 (m)' }, ticks: { font: { size: 9 } } }, y: { title: { display: true, text: '%' } } } } });
+  chart2('c_wexc', { type: 'line', data: { labels: S.exc.map(e => e[0].toFixed(2)), datasets: [{ label: '초과 확률(%)', data: S.exc.map(e => e[1]), borderColor: '#c4320a', pointRadius: 0, borderWidth: 2, fill: false }] },
+    options: { animation: false, plugins: { legend: { display: false } }, scales: { x: { title: { display: true, text: '유의파고 (m)' }, ticks: { maxTicksLimit: 12, font: { size: 9 } } }, y: { min: 0, max: 100, title: { display: true, text: '%' } } } } });
+  chart2('c_wmon', { data: { labels: ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'], datasets: [
+    { type: 'bar', label: '평균(m)', data: S.mon.map(m => m.n ? m.s / m.n : null), backgroundColor: '#0e9384' },
+    { type: 'line', label: '최대(m)', data: S.mon.map(m => m.mx), borderColor: '#c4320a', backgroundColor: '#c4320a', pointRadius: 3, borderWidth: 1.5 }] },
+    options: { animation: false, plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'm' } } } } });
+  AN.lastWave = { d, S };
+  designCalc();
+}
+function jointTable(J) {
+  const tot = J.n || 1, colTot = new Array(J.tm).fill(0);
+  J.c.forEach(r => r.forEach((v, j) => colTot[j] += v));
+  const cols = colTot.map((v, j) => v ? j : -1).filter(j => j >= 0);
+  const shade = p => p <= 0 ? '' : `background:rgba(14,147,132,${Math.min(0.85, 0.08 + p / 8)});${p > 5 ? 'color:#fff' : ''}`;
+  return `<table class="tbl" style="font-size:10px"><tr><th>Hs \\ Tp(s)</th>${cols.map(j => `<th>${j}–${j + 1}</th>`).join('')}<th>계</th></tr>
+   ${J.c.map((r, i) => { const rs = r.reduce((a, b) => a + b, 0); return rs ? `<tr><td>${(i * 0.5).toFixed(1)}–${(i * 0.5 + 0.5).toFixed(1)}</td>${cols.map(j => { const p = r[j] * 100 / tot; return `<td style="${shade(p)}">${p ? (p < 0.05 ? '+' : p.toFixed(1)) : ''}</td>`; }).join('')}<td><b>${(rs * 100 / tot).toFixed(1)}</b></td></tr>` : ''; }).join('')}</table>
+   <div class="sub">+ = 0.05% 미만 · 파주기는 기상청 부이의 파주기(WP) 값입니다.</div>`;
+}
+function waveCSV() {
+  const { d, S } = AN.lastWave, L = [];
+  L.push(`자료,${d.name}`, `기간,${dsSpan(d)}`, `평균 유의파고(m),${S.mean.toFixed(3)}`, `최대 유의파고(m),${S.mx}`, `50% 유의파고(m),${S.p50?.toFixed(3) ?? ''}`, `90% 유의파고(m),${S.p90?.toFixed(3) ?? ''}`, `99% 유의파고(m),${S.p99?.toFixed(3) ?? ''}`, `자료 개수,${S.valid}`, `회수율(%),${S.rec.toFixed(1)}`, '');
+  L.push('[유의파고 빈도]', '구간 시작(m),구간 끝(m),개수,빈도(%)'); S.hist.forEach((v, i) => L.push(`${(i * S.bw).toFixed(2)},${((i + 1) * S.bw).toFixed(2)},${v},${(v * 100 / (S.valid || 1)).toFixed(3)}`));
+  L.push('', '[초과 확률]', '유의파고(m),초과확률(%)'); S.exc.forEach(([h, p]) => L.push(`${h},${p.toFixed(3)}`));
+  L.push('', '[월별]', '월,평균(m),최대(m),개수'); S.mon.forEach((m, i) => L.push(`${i + 1},${m.n ? (m.s / m.n).toFixed(3) : ''},${m.mx ?? ''},${m.n}`));
+  L.push('', '[연 최대]', '연도,최대 유의파고(m),극치 사용'); S.years.forEach(([y, h]) => L.push(`${y},${h},${S.full.some(x => x[0] === y) ? 'O' : '자료 부족'}`));
+  if (S.gum) { L.push('', '[극치 - 검벨 적률법]', '재현기간(년),유의파고(m)'); S.gum.rp.forEach(([T, h]) => L.push(`${T},${h.toFixed(3)}`)); }
+  if (S.joint) { const J = S.joint; L.push('', '[유의파고-파주기 결합 빈도(%)]', 'Hs\\Tp(s),' + Array.from({ length: J.tm }, (_, j) => `${j}-${j + 1}`).join(','));
+    J.c.forEach((r, i) => L.push(`${(i * 0.5).toFixed(1)}-${(i * 0.5 + 0.5).toFixed(1)},` + r.map(v => (v * 100 / (J.n || 1)).toFixed(3)).join(','))); }
+  if (S.rose) { L.push('', '[파향 빈도(%)]', '방위,' + HBINS.map(([lo, hi]) => hi === 99 ? `${lo}+m` : `${lo}-${hi}m`).join(',')); S.rose.forEach((r, k) => L.push(`${SECT[k]},` + r.map(v => (v * 100 / (S.rn || 1)).toFixed(3)).join(','))); }
+  dlText(`파랑요약_${d.name.replace(/[\\/:*?"<>|\s]+/g, '_')}.csv`, L.join('\r\n'));
 }
 
 // ===================================================================== 작업 가능일
