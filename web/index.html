@@ -102,7 +102,7 @@ const LONG=[['최근 1년','풍황 최소','사계절이 한 번씩 들어가는
  ['최근 10년','장기·극치','장기 보정, 설계파고 같은 극치 분석용. 관측 시작이 늦은 지점은 그 이후만 나옴']];
 const KMA='https://data.kma.go.kr/data/sea/selectBuoyRltmList.do?pgmNo=52';
 // ===== 장기 자료: 이용자 자기 인증키 + 중계 서버(Cloudflare Worker) =====
-const RELAY='';   // 예: https://kma-relay.xxxx.workers.dev
+const RELAY='https://kma-relay.kyeongjin-je.workers.dev';   // 예: https://kma-relay.xxxx.workers.dev
 const LMODE={B:{api:'해양기상부이(기간조회)',kind:'30분 간격 원자료'},
  L:{api:'해양기상월보 › 일별(등표)기상자료',kind:'일자료(일 평균·최고·최저)',op:'getDailyLhaws'},
  C:{api:'해양기상월보 › 일별(파고부이)기상자료',kind:'일자료(일 평균·최고)',op:'getDailyWaveBuoy'}};
