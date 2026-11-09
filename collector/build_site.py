@@ -131,6 +131,17 @@ def main():
         h = heights.get(s_)
         if d["meta"] and h:
             d["meta"].update(h)
+    # 일람표에 높이가 0·미등록인 부이·등표는 같은 종류 지점들의 중앙값으로 추정 (zh_est 표시)
+    import statistics
+    for tp in ("B", "L"):
+        known = [d["meta"]["zh"] for d in st.values() if d["meta"].get("tp") == tp and d["meta"].get("zh")]
+        if not known:
+            continue
+        med = round(statistics.median(known), 1)
+        for d in st.values():
+            m = d["meta"]
+            if m.get("tp") == tp and not m.get("zh"):
+                m.update(zh=med, zh_est=True)
 
     out_data = os.path.join(a.out, "data")
     ser_dir = os.path.join(out_data, "series")
