@@ -38,14 +38,25 @@ canvas{width:100%!important}
 .keybox input[type=password]{width:100%;padding:7px 8px;border:1px solid #f5b83d;border-radius:6px;background:#fff;font-size:13px}
 .keybox input[type=password]:focus{outline:2px solid #f5b83d55;border-color:#d99100}
 .err{color:#b42318;font-size:12px}
+.dsrow{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:7px 9px;margin-bottom:6px;cursor:pointer;font-size:12px}
+.dsrow.on{border-color:var(--acc);background:#eef4ff}.dsrow input{margin-top:3px}
+.grid2{display:grid;grid-template-columns:auto 1fr;gap:6px 8px;align-items:center;font-size:12px;margin:8px 0}.grid2 select,.grid2 input{padding:4px;border:1px solid var(--line);border-radius:6px}
+.tbl{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}.tbl th,.tbl td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:right}.tbl th:first-child,.tbl td:first-child{text-align:left}.tbl th{background:var(--bg);font-weight:600}
+@media (max-width:820px){
+ header{height:auto;flex-wrap:wrap;padding:8px 10px;gap:6px}header h1{font-size:15px}header .meta{order:9;width:100%;font-size:11px}header .sp{display:none}
+ header button{padding:5px 8px}
+ main{flex-direction:column;height:auto}#map{flex:none;height:52vh}
+ aside{width:100%;border-left:0;border-top:1px solid var(--line);padding:12px}
+ .grid{grid-template-columns:repeat(2,1fr)}.legend{display:none}
+}
 </style></head><body>
 <header><h1>해양기상 실시간 관측</h1><span class="meta" id="meta">불러오는 중…</span><span class="sp"></span>
-<button onclick="map.setView([36,127.8],7)">전국</button>
+<button onclick="openAnalysis()">📊 분석</button><button onclick="openAreas()">📐 사업지</button><button onclick="map.setView([36,127.8],7)">전국</button>
 <button onclick="refresh(true)">새로고침</button></header>
 <main><div id="map"></div><aside>
 <div class="filters" id="filters"></div>
 <div id="panel"><div class="empty">지도에서 관측 지점을 누르면 최신값과 최근 변화 그래프가 나오고, 원하는 기간의 자료를 내려받을 수 있습니다.<br><br>
-· 화살표: 바람이 불어가는 방향, 숫자: 풍속(m/s)<br>· 동그라미: 바람 관측이 없는 지점(파고부이 등), 숫자: 유의파고(m)<br>· 기상청 해양기상관측을 매시간 받아 갱신합니다 (출처: 기상청 API허브).<br>· <b>지도의 빈 곳(바다)을 누르면</b> 그 위치의 재현바람장(10·80·140·220m 바람, 5년)을 받을 수 있습니다.</div></div>
+· 화살표: 바람이 불어가는 방향, 숫자: 풍속(m/s)<br>· 동그라미: 바람 관측이 없는 지점(파고부이 등), 숫자: 유의파고(m)<br>· 기상청 해양기상관측을 매시간 받아 갱신합니다 (출처: 기상청 API허브).<br>· <b>📊 분석</b>: 받은 자료·직접 측정한 CSV로 풍황 요약(바람장미·와이블), 작업 가능일, 장기 보정(MCP)을 봅니다.<br>· <b>📐 사업지</b>: 사업 구역 경계(KML 등)를 지도에 그립니다.<br>· <b>지도의 빈 곳(바다)을 누르면</b> 그 위치의 재현바람장(10·80·140·220m 바람, 5년)을 받을 수 있습니다.</div></div>
 </aside></main>
 <script>
 const TYPES={B:["해양기상부이","#1f6feb"],C:["파고부이","#0e9384"],L:["등표","#c4320a"],N:["조위관측소","#6941c6"],F:["연안방재관측","#b54708"],J:["기상1호","#475467"]};
@@ -77,9 +88,10 @@ function head(){const s=SEL;document.getElementById('head').innerHTML=`<h2>${s.n
  <div class="grid"><div class="kv"><span>풍속 / 돌풍 (m/s)</span><b>${f(s.ws)} / ${f(s.gst)}</b></div><div class="kv"><span>풍향 (°)</span><b>${f(s.wd,0)}</b></div>
  <div class="kv"><span>유의파고 (m)</span><b>${f(s.wh)}</b></div><div class="kv"><span>수온 (℃)</span><b>${f(s.tw)}</b></div>
  <div class="kv"><span>기온 (℃)</span><b>${f(s.ta)}</b></div><div class="kv"><span>기압 (hPa)</span><b>${f(s.pa)}</b></div></div>`;}
-function select(s){SEL=s;SER=null;document.getElementById('panel').innerHTML=`<div id="head"></div>
+function toPanel(){if(innerWidth<820)setTimeout(()=>document.querySelector('aside').scrollIntoView({behavior:'smooth'}),50);}
+function select(s){SEL=s;SER=null;toPanel();document.getElementById('panel').innerHTML=`<div id="head"></div>
  <div class="tabs">${[24,72,168,720].map(h=>`<button data-h="${h}" onclick="hours=${h};loadSeries()">${h/24}일</button>`).join('')}<span class="sub" id="sst" style="margin-left:6px"></span></div>
- <canvas id="ch" height="230"></canvas>${hubBox()}${dlBox()}`;head();hubNow();loadSeries().then(()=>{preset(1);if(document.getElementById('l1'))lpreset(1);});}
+ <canvas id="ch" height="230"></canvas><button class="btn" style="margin-top:6px" onclick="DSEL='ser-${s.stn}';openAnalysis()">📊 최근 30일 풍황·작업 가능일 분석</button>${hubBox()}${dlBox()}`;head();hubNow();loadSeries().then(()=>{preset(1);if(document.getElementById('l1'))lpreset(1);});}
 let SER=null,LASTROWS=[];
 // ===== 허브높이 환산 =====
 const HUB=(()=>{let o={};try{o=JSON.parse(localStorage.getItem('hub')||'{}')}catch(e){}return {h:140,m:'pow',a:0.11,z0:0.0002,on:true,...o};})();
@@ -109,7 +121,7 @@ function hubSet(){const hv=+document.getElementById('hh').value;HUB.h=hv>=10&&hv
  try{localStorage.setItem('hub',JSON.stringify(HUB))}catch(e){}hubNow();plot(LASTROWS);}
 async function loadSeries(){document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',+b.dataset.h==hours));
  const st=document.getElementById('sst');
- try{if(!SER||SER.stn!=SEL.stn){st.textContent='불러오는 중…';SER=await (await fetch(`data/series/${SEL.stn}.json?`+Math.floor(Date.now()/6e5))).json();}
+ try{if(!SER||SER.stn!=SEL.stn){st.textContent='불러오는 중…';SER=await (await fetch(`data/series/${SEL.stn}.json?`+Math.floor(Date.now()/6e5))).json();dsFromSER(SEL,SER);}
   const rows=serRows(hours);st.textContent=`${rows.length}개 관측`;plot(rows);}
  catch(e){st.innerHTML=`<span class="err">자료 없음</span>`;}}
 function tmDate(s){return new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8),+s.slice(8,10),+s.slice(10,12));}
@@ -202,7 +214,8 @@ async function ldl(){const box=document.getElementById('ljob'),key=getKey(box);i
   const csv='\ufeff'+['지점명,'+cols.map(head).join(',')+(hc?','+hubLabel(z,st):'')].concat(rows.map(r=>`${st.name},`+cols.map(c=>r[c]??'').join(',')+(hc?','+(conv(r[wk],z)??''):''))).join('\r\n');
   const fn=`${st.name}_${st.stn}_${st.tp=='B'?'30분':'일'}_${iso(a).replace(/-/g,'')}-${iso(b).replace(/-/g,'')}.csv`;
   const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),el=document.createElement('a');el.href=u;el.download=fn;el.click();
-  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div>`;}
+  if(st.tp=='B')dsFromBuoy(st,rows,a,b);else dsFromDaily(st,rows,a,b);
+  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div><button class="btn" style="margin-top:4px" onclick="DSEL=DSL[DSL.length-1].id;openAnalysis()">📊 받은 자료 분석하기</button>`;}
  catch(e){box.innerHTML=`<span class="err">${e.message}</span>`;}
  finally{JOB=null;}}
 function dlBox(){return `<div class="box"><h3>자료 내려받기 (CSV)</h3>${PRESETS.map((p,i)=>`<button class="preset" data-i="${i}" onclick="preset(${i})"><b>${p.n}</b>${p.t?`<span class="tag">${p.t}</span>`:''}<small>${p.m}</small></button>`).join('')}
@@ -228,7 +241,7 @@ const lg=L.control({position:'bottomleft'});lg.onAdd=()=>{const d=L.DomUtil.crea
 const RW={min:'2021-06-01',max:'2026-05-31',api:'융합기상 › 에너지 지원 › 재현바람장 위·경도 추출 조회'};
 let PIN=null;
 map.on('click',e=>windPick(e.latlng.lat,e.latlng.lng));
-function windPick(lat,lon){lat=Math.round(lat*10000)/10000;lon=Math.round(lon*10000)/10000;SEL=null;SER=null;
+function windPick(lat,lon){toPanel();lat=Math.round(lat*10000)/10000;lon=Math.round(lon*10000)/10000;SEL=null;SER=null;
  if(PIN)PIN.setLatLng([lat,lon]);else PIN=L.marker([lat,lon],{icon:L.divIcon({className:'',iconSize:[22,30],iconAnchor:[11,28],html:'<div style="font-size:26px;line-height:1">📍</div>'})}).addTo(map);
  const hs=(lsGet('rwH')||'80,140').split(',');
  document.getElementById('panel').innerHTML=`<h2>재현바람장 <span class="sub">위치 직접 선택</span></h2>
@@ -274,7 +287,10 @@ async function rwDl(lat,lon){const box=document.getElementById('rwjob'),key=getK
   const csv='﻿'+['시각(KST),위도,경도,'+cols.map(head).join(',')].concat(rows.map(r=>`${r.tm},${lat},${lon},`+cols.map(c=>r[c]??'').join(','))).join('\r\n');
   const fn=`재현바람장_${lat}_${lon}_${hs.join('-')}m_${itv}분_${document.getElementById('r1').value.replace(/-/g,'')}-${document.getElementById('r2').value.replace(/-/g,'')}.csv`;
   const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),el=document.createElement('a');el.href=u;el.download=fn;el.click();
-  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div>`;}
+  dsFromRawm(lat,lon,hs,itv,rows);
+  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div><button class="btn" style="margin-top:4px" onclick="DSEL=DSL[DSL.length-1].id;openAnalysis()">📊 받은 자료 분석하기</button>`;}
  catch(e){box.innerHTML=`<span class="err">${e.message}</span>`;}finally{JOB=null;}}
+window.addEventListener('resize',()=>map.invalidateSize());
 filters();refresh();setInterval(refresh,600000);
-</script></body></html>
+</script>
+<script src="analysis.js"></script></body></html>

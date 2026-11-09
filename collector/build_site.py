@@ -164,7 +164,9 @@ def main():
     with open(os.path.join(out_data, "latest.json"), "w", encoding="utf-8") as f:
         json.dump({"base": base, "built": now.strftime("%Y-%m-%d %H:%M"), "days": a.days,
                    "stations": latest}, f, ensure_ascii=False, separators=(",", ":"))
-    shutil.copy(os.path.join(ROOT, "web", "index.html"), os.path.join(a.out, "index.html"))
+    for fn in os.listdir(os.path.join(ROOT, "web")):  # index.html, analysis.js 등 화면 파일
+        if fn.endswith((".html", ".js", ".css")):
+            shutil.copy(os.path.join(ROOT, "web", fn), os.path.join(a.out, fn))
     prune_cache(a.days)
     print(f"지점 {len(latest)}개, 기준 {base} → {a.out}")
 
