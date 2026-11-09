@@ -1,3 +1,6 @@
+// 큰 배열(10년치 30분 자료 등)에서도 동작하는 최댓값·최솟값 (Math.max(...arr)는 약 12만 개를 넘으면 오류)
+function amax(a){let m=-Infinity;for(const v of a)if(v>m)m=v;return m;}
+function amin(a){let m=Infinity;for(const v of a)if(v<m)m=v;return m;}
 // 해양기상 대시보드 — 분석 기능 (자료 보관함, 풍황 요약, 작업 가능일, 장기 보정 MCP, 사업지 경계)
 // index.html 의 전역(map, SEL, SER, HUB, conv, zOf, TYPES, tmfmt, iso, f, MISS, STATIONS 등)을 사용합니다.
 
@@ -146,7 +149,7 @@ function windStats(d) {
   const wb = weibull(valid);
   const step = d.daily ? 1440 : stepMin(d), expect = n ? Math.round((d.t[n - 1] - d.t[0]) / 6e4 / step) + 1 : 0;
   // 빈도표 1 m/s
-  const maxb = Math.min(40, Math.ceil(Math.max(...valid, 1))), hist = new Array(maxb).fill(0);
+  const maxb = Math.min(40, Math.ceil(Math.max(amax(valid), 1))), hist = new Array(maxb).fill(0);
   for (const v of valid) hist[Math.min(maxb - 1, Math.floor(v))]++;
   // 월별
   const mon = Array.from({ length: 12 }, () => ({ s: 0, n: 0 }));
@@ -186,7 +189,7 @@ function windView(out, d) {
 }
 function roseSVG(S, BINS = RBINS, unit = 'm/s') {
   const W = 300, R = 120, cx = W / 2, cy = W / 2 + 4, tot = S.rn;
-  const pct = S.rose.map(r => r.map(v => v * 100 / tot)), mx = Math.max(...pct.map(r => r.reduce((a, b) => a + b, 0))) || 1;
+  const pct = S.rose.map(r => r.map(v => v * 100 / tot)), mx = amax(pct.map(r => r.reduce((a, b) => a + b, 0))) || 1;
   const sc = R / mx, a0 = Math.PI / 16; let p = '';
   const rings = [0.25, 0.5, 0.75, 1].map(q => `<circle cx="${cx}" cy="${cy}" r="${R * q}" fill="none" stroke="#e4e7ec"/><text x="${cx + 3}" y="${cy - R * q + 10}" font-size="9" fill="#98a2b3">${f(mx * q, 1)}%</text>`).join('');
   pct.forEach((bins, s) => {
@@ -273,7 +276,7 @@ function waveStats(d) {
     gum = { mu, beta, rp: [10, 30, 50, 100].map(T => [T, mu - beta * Math.log(-Math.log(1 - 1 / T))]) }; }
   // 파고-파주기 결합 빈도
   let joint = null;
-  if (d.wp && d.wp.some(v => v != null)) { const tb = 1, hbins = Math.ceil((mx > 0 ? mx : 1) / 0.5), tmax = Math.min(20, Math.ceil(Math.max(...d.wp.filter(v => v != null)) || 1));
+  if (d.wp && d.wp.some(v => v != null)) { const tb = 1, hbins = Math.ceil((mx > 0 ? mx : 1) / 0.5), tmax = Math.min(20, Math.ceil(amax(d.wp.filter(v => v != null))) || 1);
     joint = { hb: hbins, tm: tmax, c: Array.from({ length: hbins }, () => new Array(tmax).fill(0)), n: 0 };
     for (let i = 0; i < n; i++) if (wh[i] != null && d.wp[i] != null) { joint.c[Math.min(hbins - 1, Math.floor(wh[i] / 0.5))][Math.min(tmax - 1, Math.floor(d.wp[i] / tb))]++; joint.n++; } }
   // 파향 장미
@@ -282,7 +285,7 @@ function waveStats(d) {
     for (let i = 0; i < n; i++) if (wh[i] != null && d.wo[i] != null) { const s = Math.round(((d.wo[i] % 360) + 360) % 360 / 22.5) % 16; const b = HBINS.findIndex(([lo, hi]) => wh[i] >= lo && wh[i] < hi); rose[s][b < 0 ? HBINS.length - 1 : b]++; rn++; } }
   const hmaxAll = hmx.filter(v => v != null);
   return { mean, mx, mxt: mxi >= 0 ? d.t[mxi] : null, p50: pctl(sorted, .5), p90: pctl(sorted, .9), p99: pctl(sorted, .99), valid: hv.length, expect, rec: expect ? Math.min(100, hv.length * 100 / expect) : 0,
-    hist, bw, exc, mon, years, full, gum, joint, rose, rn, hmaxMax: hmaxAll.length ? Math.max(...hmaxAll) : null };
+    hist, bw, exc, mon, years, full, gum, joint, rose, rn, hmaxMax: hmaxAll.length ? amax(hmaxAll) : null };
 }
 function waveView(out, d) {
   if (!dsHas(d, 'wh')) { out.innerHTML = '<div class="sub">이 자료에는 유의파고가 없습니다 (등표·재현바람장 등).</div>'; return; }
@@ -445,7 +448,7 @@ function mcpCalc() {
   const pv = pred.map(p => p.ws), pm = pv.reduce((a, b) => a + b, 0) / pv.length, pw = weibull(pv);
   const tMean = ys.reduce((a, b) => a + b, 0) / ys.length, rOver = xs.reduce((a, b) => a + b, 0) / xs.length;
   const rAll = [...rh.values()].map(o => o.ws), rMean = rAll.reduce((a, b) => a + b, 0) / rAll.length;
-  const ov0 = new Date(Math.min(...[...th.keys()].filter(h => rh.has(h))) * 36e5), ov1 = new Date(Math.max(...[...th.keys()].filter(h => rh.has(h))) * 36e5);
+  const ov0 = new Date(amin([...th.keys()].filter(h => rh.has(h))) * 36e5), ov1 = new Date(amax([...th.keys()].filter(h => rh.has(h))) * 36e5);
   el.innerHTML = `<div class="grid">
    <div class="kv"><span>겹치는 시간</span><b>${xs.length.toLocaleString()}h</b></div><div class="kv"><span>R² (전체)</span><b>${f(all.r2, 3)}</b></div>
    <div class="kv"><span>관계식</span><b style="font-size:13px">${f(all.a, 3)}x ${all.b >= 0 ? '+' : '−'} ${f(Math.abs(all.b), 2)}</b></div>
@@ -457,7 +460,7 @@ function mcpCalc() {
    <button class="btn pri" onclick="mcpAdd()">장기 추정 자료를 보관함에 넣기</button> <button class="btn" onclick="mcpCSV()">장기 추정 시계열 CSV</button>
    <div class="sub" style="margin-top:6px">간이 선형 MCP입니다. 정식 풍황 평가에서는 방법(분산비·행렬법 등)과 기간 선택을 함께 검토하세요.</div>`;
   const step = Math.max(1, Math.floor(xs.length / 3000)), pts = []; for (let i = 0; i < xs.length; i += step) pts.push({ x: xs[i], y: ys[i] });
-  const mx = Math.max(...xs);
+  const mx = amax(xs);
   chart2('c_mcp', { data: { datasets: [{ type: 'scatter', label: '1시간 평균 (겹친 기간)', data: pts, pointRadius: 1.5, backgroundColor: '#1f6feb55' },
     { type: 'line', label: `대상 = ${f(all.a, 3)}×기준 ${all.b >= 0 ? '+' : '−'} ${f(Math.abs(all.b), 2)}`, data: [{ x: 0, y: all.b }, { x: mx, y: all.a * mx + all.b }], borderColor: '#d62728', pointRadius: 0, borderWidth: 2 }] },
     options: { animation: false, plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } }, scales: { x: { type: 'linear', title: { display: true, text: `기준 풍속 (m/s) — ${R.name}` } }, y: { title: { display: true, text: '대상 풍속 (m/s)' } } } } });
