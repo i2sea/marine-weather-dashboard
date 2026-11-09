@@ -43,6 +43,7 @@ jobs:
       - name: 기상청 자료 받아 사이트 만들기
         env:
           KMA_API_KEY: ${{ secrets.KMA_API_KEY }}
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
         run: python collector/build_site.py --days 30 --out site
 
       - uses: actions/cache/save@v4

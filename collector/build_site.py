@@ -4,7 +4,8 @@ python collector/build_site.py --days 30 --out site
   1) 최근 N일의 해양기상종합관측(sea_obs)을 시간마다 받음 (이미 받은 시각은 collector/cache 재사용)
   2) site/data/latest.json      : 지점별 최신 관측값 (지도 표시용)
      site/data/series/<지점>.json : 지점별 최근 N일 시간자료 (그래프·CSV 다운로드용)
-  3) web/index.html 을 site/ 로 복사
+  3) 국립해양조사원 조류예보 → site/data/currents.json, site/data/currents/<코드>.json (collector/currents.py)
+  4) web/index.html 을 site/ 로 복사
 인증키: 환경변수 KMA_API_KEY (GitHub Secrets) 또는 collector/kma_key.txt
 """
 import argparse, datetime as dt, glob, json, os, shutil, sys
@@ -164,6 +165,11 @@ def main():
     with open(os.path.join(out_data, "latest.json"), "w", encoding="utf-8") as f:
         json.dump({"base": base, "built": now.strftime("%Y-%m-%d %H:%M"), "days": a.days,
                    "stations": latest}, f, ensure_ascii=False, separators=(",", ":"))
+    try:  # 국립해양조사원 조류예보 (공공데이터포털 키가 있을 때만 새로 받음, 실패해도 사이트는 만듦)
+        import currents
+        currents.build(out_data)
+    except Exception as e:  # noqa: BLE001
+        print("조류예보 단계 건너뜀:", e)
     for fn in os.listdir(os.path.join(ROOT, "web")):  # index.html, analysis.js 등 화면 파일
         if fn.endswith((".html", ".js", ".css")):
             shutil.copy(os.path.join(ROOT, "web", fn), os.path.join(a.out, fn))

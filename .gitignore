@@ -9,3 +9,4 @@ collector/raw/
 site/
 __pycache__/
 *.pyc
+collector/datagokr_key.txt
