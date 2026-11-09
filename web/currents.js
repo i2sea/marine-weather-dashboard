@@ -16,7 +16,7 @@ function curIcon(c) {
 function curDraw() {
   curLayer.clearLayers(); if (!CUR || !show.K) return;
   for (const c of CUR.stations) L.marker([c.lat, c.lon], { icon: curIcon(c), zIndexOffset: -100 }).addTo(curLayer).on('click', () => curSelect(c.code))
-    .bindTooltip(`${c.name} · 조류예보 연중 최강 ${c.max.toFixed(2)} m/s`);
+    .bindTooltip(`${c.name} · 조류예보 최강 ${c.max.toFixed(2)} m/s`);
 }
 async function curLoad() {
   try { const r = await fetch('data/currents.json?' + Math.floor(Date.now() / 36e5)); if (!r.ok) return; CUR = await r.json(); curDraw(); } catch (e) { /* 아직 자료 없음 */ }
@@ -32,7 +32,7 @@ async function curSelect(code) {
   document.getElementById('panel').innerHTML = `${navBtns(true)}
    <h2>${c.name} <span class="sub">조류예보 · ${c.code}</span></h2>
    <div class="sub">${c.lat.toFixed(4)}, ${c.lon.toFixed(4)} · 예측 ${c.t0} ~ ${c.t1} · ${c.fetched} 받음</div>
-   <div class="grid"><div class="kv"><span>연중 최강 유속 (m/s)</span><b style="color:${CURCOL}">${c.max.toFixed(2)}</b></div>
+   <div class="grid"><div class="kv"><span>최강 유속 (m/s, 예측 기간 전체)</span><b style="color:${CURCOL}">${c.max.toFixed(2)}</b></div>
     <div class="kv"><span>그때 유향</span><b>${Math.round(c.maxdir)}° <small style="font-size:11px">${dirName(c.maxdir)}</small></b></div>
     <div class="kv"><span>그때 시각</span><b style="font-size:13px">${c.maxt}</b></div>
     <div class="kv"><span>최강 유속 평균</span><b>${c.mean.toFixed(2)}</b></div><div class="kv"><span>상위 5% 값</span><b>${c.p95.toFixed(2)}</b></div>
@@ -41,11 +41,11 @@ async function curSelect(code) {
     ${g.map(x => `<tr><td>${x.dir}° (${dirName(x.dir)}쪽으로)</td><td>${x.max.toFixed(2)}</td><td>${x.mean.toFixed(2)}</td><td>${x.n}</td></tr>`).join('')}</table>` : ''}
    <canvas id="cch" height="200"></canvas><div class="sub" id="cst"></div>
    <div class="box"><h3>기초 구조물 계산에 넣을 때</h3>
-    <div style="font-size:13px;line-height:1.7">조류 표층 유속 후보: <b style="color:${CURCOL}">${c.max.toFixed(2)} m/s</b> (이 지점 연중 최강)</div>
+    <div style="font-size:13px;line-height:1.7">조류 표층 유속 후보: <b style="color:${CURCOL}">${c.max.toFixed(2)} m/s</b> (이 지점 예측 기간 ${c.t0.slice(0,4)}~${c.t1.slice(0,4)}년 중 최강)</div>
     <div class="sub" style="line-height:1.7">· 국립해양조사원이 조화분석으로 예측한 <b>조류(밀물·썰물) 성분만</b>입니다. 태풍 때의 취송류·해일류, 해류는 들어 있지 않아 설계에는 여유를 더하거나 사업지 해양조사 값과 비교하세요.<br>
      · 예보지점은 대개 항로·수도(좁은 물길)에 있어 트인 바다의 사업지보다 유속이 크게 나올 수 있습니다. 거리와 지형을 함께 보세요.<br>
      · 유속은 해당 예보지점의 표층 기준입니다.</div></div>
-   <div class="box"><h3>내려받기</h3><button class="btn pri" onclick="curCSV()">최강·전류 시각 CSV (${c.t0.slice(0, 4)}년)</button>
+   <div class="box"><h3>내려받기</h3><button class="btn pri" onclick="curCSV()">최강·전류 시각 CSV (${c.t0} ~ ${c.t1})</button>
     <div class="sub" style="margin-top:6px">출처: 국립해양조사원 조류예보(최강 창·낙조 및 전류), 공공데이터포털 · 공공누리 제1유형(출처표시)</div></div>`;
   map.setView([c.lat, c.lon], Math.max(map.getZoom(), 10));
   try {
@@ -62,13 +62,13 @@ function curCSV() {
   const lines = ['지점코드,지점명,위도,경도,예측일시(KST),구분,유향(deg),유속(m/s)'];
   s.t.forEach((t, i) => lines.push(`${c.code},${c.name},${c.lat},${c.lon},${t},${s.s[i] > 0 ? '최강' : '전류(정조)'},${s.d[i] ?? ''},${s.s[i]}`));
   const u = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv' })), a = document.createElement('a');
-  a.href = u; a.download = `조류예보_${c.name}_${c.code}_${c.t0.slice(0, 4)}.csv`; a.click();
+  a.href = u; a.download = `조류예보_${c.name}_${c.code}_${c.t0.slice(0, 4)}-${c.t1.slice(0, 4)}.csv`; a.click();
 }
 // 사업지 패널에 가까운 조류예보 지점 붙이기
 function curNearHTML(lat, lon) {
   if (!CUR) return '';
   const list = CUR.stations.map(c => ({ c, d: kmTo(c, lat, lon) })).sort((a, b) => a.d - b.d).slice(0, 5);
-  return `<div class="box"><h3>가까운 조류예보 지점 (국립해양조사원)</h3><table class="tbl"><tr><th>지점</th><th>거리</th><th>연중 최강</th></tr>
+  return `<div class="box"><h3>가까운 조류예보 지점 (국립해양조사원)</h3><table class="tbl"><tr><th>지점</th><th>거리</th><th>최강</th></tr>
    ${list.map(({ c, d }) => `<tr style="cursor:pointer" onclick="curSelect('${c.code}')"><td>${c.name}</td><td>${d.toFixed(1)}km</td><td>${c.max.toFixed(2)} m/s</td></tr>`).join('')}</table>
    <div class="sub">조류(밀물·썰물) 성분만의 예측값입니다. 눌러서 자세히 보기.</div></div>`;
 }
