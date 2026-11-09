@@ -75,7 +75,7 @@ function head(){const s=SEL;document.getElementById('head').innerHTML=`<h2>${s.n
  <div class="kv"><span>기온 (℃)</span><b>${f(s.ta)}</b></div><div class="kv"><span>기압 (hPa)</span><b>${f(s.pa)}</b></div></div>`;}
 function select(s){SEL=s;SER=null;document.getElementById('panel').innerHTML=`<div id="head"></div>
  <div class="tabs">${[24,72,168,720].map(h=>`<button data-h="${h}" onclick="hours=${h};loadSeries()">${h/24}일</button>`).join('')}<span class="sub" id="sst" style="margin-left:6px"></span></div>
- <canvas id="ch" height="230"></canvas>${dlBox()}`;head();loadSeries().then(()=>preset(1));}
+ <canvas id="ch" height="230"></canvas>${dlBox()}`;head();loadSeries().then(()=>{preset(1);if(document.getElementById('l1'))lpreset(1);});}
 let SER=null;
 async function loadSeries(){document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',+b.dataset.h==hours));
  const st=document.getElementById('sst');
@@ -101,14 +101,81 @@ const LONG=[['최근 1년','풍황 최소','사계절이 한 번씩 들어가는
  ['최근 5년','추천','해마다 다른 바람 세기(연변동)를 반영 — 발전량 검토용으로 권장'],
  ['최근 10년','장기·극치','장기 보정, 설계파고 같은 극치 분석용. 관측 시작이 늦은 지점은 그 이후만 나옴']];
 const KMA='https://data.kma.go.kr/data/sea/selectBuoyRltmList.do?pgmNo=52';
+// ===== 장기 자료: 이용자 자기 인증키 + 중계 서버(Cloudflare Worker) =====
+const RELAY='';   // 예: https://kma-relay.xxxx.workers.dev
+const LMODE={B:{api:'해양기상부이(기간조회)',kind:'30분 간격 원자료'},
+ L:{api:'해양기상월보 › 일별(등표)기상자료',kind:'일자료(일 평균·최고·최저)',op:'getDailyLhaws'},
+ C:{api:'해양기상월보 › 일별(파고부이)기상자료',kind:'일자료(일 평균·최고)',op:'getDailyWaveBuoy'}};
+let JOB=null;
+const lsGet=k=>{try{return localStorage.getItem(k)||''}catch(e){return ''}},lsSet=(k,v)=>{try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch(e){}};
+function longBox(){const m=LMODE[SEL.tp];
+ if(!m)return `<div class="sub">이 관측 종류는 장기 자료 바로받기를 지원하지 않습니다. <a href="https://data.kma.go.kr" target="_blank" rel="noopener">기상자료개방포털</a>을 이용하세요.</div>`;
+ if(!RELAY)return `<div class="sub">장기 자료 바로받기를 준비하고 있습니다. 그동안은 <a href="${KMA}" target="_blank" rel="noopener">기상청 기상자료개방포털</a>에서 받으세요.</div>`;
+ return `${LONG.map(([n,t,m2],i)=>`<button class="preset" data-l="${i}" onclick="lpreset(${i})"><b>${n}</b><span class="tag">${t}</span><small>${m2}</small></button>`).join('')}
+ <div class="row"><input type="date" id="l1"> ~ <input type="date" id="l2"></div>
+ <div class="sub">받는 자료: <b>${m.kind}</b>${SEL.tp!='B'?' · 시간자료 장기분은 <a href="https://data.kma.go.kr" target="_blank" rel="noopener">기상자료개방포털</a>(해양 메뉴)':''}</div>
+ <div class="row" style="margin-top:8px"><input type="password" id="ukey" placeholder="내 기상청 API허브 인증키" value="${lsGet('kmaKey')}" autocomplete="off"></div>
+ <label class="sub"><input type="checkbox" id="ukeep" ${lsGet('kmaKey')?'checked':''}> 이 브라우저에 키 기억하기</label>
+ <div class="sub" style="line-height:1.6;margin:4px 0">· 각자 자기 키로 기상청에서 직접 받습니다. 키는 저장·기록하지 않고 기상청에 전달만 합니다.<br>
+ · 키 발급: <a href="https://apihub.kma.go.kr" target="_blank" rel="noopener">기상청 API허브</a> 가입 → <b>${m.api}</b> 활용신청(무료, 즉시)</div>
+ <button class="btn pri" onclick="ldl()">CSV 받기</button> <button class="btn" onclick="if(JOB)JOB.stop=true">취소</button>
+ <div id="ljob" style="margin-top:8px"></div>`;}
+function lpreset(i){const y=[1,5,10][i],t=new Date(),s=new Date(t);s.setFullYear(t.getFullYear()-y);s.setDate(s.getDate()+1);
+ document.getElementById('l1').value=iso(s);document.getElementById('l2').value=iso(t);
+ document.querySelectorAll('.preset[data-l]').forEach(b=>b.classList.toggle('on',+b.dataset.l==i));}
+async function relay(path,params,key){const q=new URLSearchParams({path,...params});
+ const r=await fetch(`${RELAY}?${q}`,{headers:{'X-KMA-Key':key}});const buf=await r.arrayBuffer();let t;
+ try{t=new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch(e){t=new TextDecoder('euc-kr').decode(buf)}
+ if(r.status==401||r.status==403)throw new Error('인증 실패 — 키가 맞는지, 이 API를 활용신청했는지 확인하세요');
+ if(t.trim().startsWith('{')){try{const j=JSON.parse(t);if(j.result&&String(j.result.status)!='200')throw new Error((j.result.message||'API 오류')+` (${j.result.status})`);}catch(e){if(!(e instanceof SyntaxError))throw e;}}
+ if(!r.ok)throw new Error(`중계 서버 오류 ${r.status}: ${t.slice(0,80)}`);return t;}
+const MISS=new Set(['-99','-99.0','-99.00','-999','-999.0','-9999','-9999.0','-99.9']);
+const BCOLS='TM STN WD1 WS1 WS1_GST WD2 WS2 WS2_GST PA HM TA TW WH_MAX WH_SIG WH_AVE WP WO AQC MQC'.split(' ');
+const BHEAD={TM:'관측시각(KST)',STN:'지점번호',WD1:'풍향1(deg)',WS1:'풍속1(m/s)',WS1_GST:'돌풍1(m/s)',WD2:'풍향2(deg)',WS2:'풍속2(m/s)',WS2_GST:'돌풍2(m/s)',PA:'기압(hPa)',HM:'습도(%)',TA:'기온(C)',TW:'수온(C)',WH_MAX:'최대파고(m)',WH_SIG:'유의파고(m)',WH_AVE:'평균파고(m)',WP:'파주기(s)',WO:'파향(deg)',AQC:'자동품질검사',MQC:'수동품질검사'};
+function parseBuoy(t,stn){const out=[];for(let ln of t.split(/\r?\n/)){ln=ln.trim();if(!ln||ln[0]=='#')continue;if(ln.endsWith('='))ln=ln.slice(0,-1).trim();
+ const p=ln.split(',').map(x=>x.trim());if(p[p.length-1]==='')p.pop();const r={};BCOLS.forEach((c,i)=>r[c]=MISS.has(p[i]??'')?'':(p[i]??''));if(r.STN==stn)out.push(r);}return out;}
+const DHEAD={wh_sig:'평균 유의파고',wh_sig_:'최고 유의파고',wh_max:'평균 최대파고',wh_max_:'최고 최대파고',wh_max_hh:'최대파고 시각',wp:'평균 파주기',wp_:'최대 파주기',wo_:'최다 파향',ws:'평균 풍속',gt:'최대순간풍속',gt_wd:'최대순간풍향',pa:'평균 기압',hm:'평균 습도',ta:'평균 기온',ta_:'최고 기온',ta__:'최저 기온',tw:'평균 수온',tw_:'최고 수온',tw__:'최저 수온',ls:'평균 수위',ls_:'최고 수위'};
+function leaves(o,out){if(Array.isArray(o))o.forEach(x=>leaves(x,out));else if(o&&typeof o=='object'){const v=Object.values(o);if(v.length&&v.every(x=>x===null||typeof x!='object'))out.push(o);else v.forEach(x=>leaves(x,out));}return out;}
+function cleanV(v){v=v==null?'':String(v).trim();if(['','x','null','none','-'].includes(v.toLowerCase())||MISS.has(v))return '';const m=v.match(/^(-?\d+(?:\.\d+)?)\s*[)>(<*#]*$/);return m?(MISS.has(m[1])?'':m[1]):v;}
+function parseDaily(t,y,mo){let j;try{j=JSON.parse(t)}catch(e){throw new Error('응답 형식 오류')}
+ const h=j.response&&j.response.header;if(h&&!['00','0','03'].includes(String(h.resultCode)))throw new Error(`API 오류 ${h.resultCode}: ${h.resultMsg}`);
+ const out=[];for(const r of leaves((j.response&&j.response.body&&j.response.body.items)||[],[])){if(!('tm'in r))continue;const lab=String(r.tm).trim();if(!/^\d+$/.test(lab))continue;
+  const d=+lab,last=new Date(y,mo,0).getDate();if(d<1||d>last)continue;const row={date:`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`};
+  for(const[k,v]of Object.entries(r))if(k!='tm')row[k]=cleanV(v);out.push(row);}return out;}
+async function pool(tasks,n,onDone){let i=0,done=0;const res=new Array(tasks.length);
+ async function w(){while(i<tasks.length){if(JOB.stop)throw new Error('취소했습니다');const k=i++;res[k]=await tasks[k]();onDone(++done);}}
+ await Promise.all(Array.from({length:Math.min(n,tasks.length)},w));return res;}
+async function ldl(){const box=document.getElementById('ljob'),key=document.getElementById('ukey').value.trim();
+ if(!key){box.innerHTML='<span class="err">인증키를 넣어 주세요</span>';return;}
+ lsSet('kmaKey',document.getElementById('ukeep').checked?key:'');
+ const a=new Date(document.getElementById('l1').value+'T00:00'),b=new Date(document.getElementById('l2').value+'T23:59');
+ if(!(a<=b)){box.innerHTML='<span class="err">기간을 확인해 주세요</span>';return;}
+ const st=SEL,m=LMODE[st.tp],now=new Date();if(b>now)b.setTime(now.getTime());
+ JOB={stop:false};const t0=Date.now();let tasks=[];const f2=d=>`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+ if(st.tp=='B'){for(let s=new Date(a);s<=b;){const e=new Date(Math.min(s.getTime()+7*864e5-6e4,b.getTime()));const s1=f2(s),e1=f2(e);
+   tasks.push(async()=>parseBuoy(await relay('typ01/url/kma_buoy2.php',{tm1:s1,tm2:e1,stn:st.stn,help:'0'},key),st.stn));s=new Date(e.getTime()+6e4);}}
+ else{for(let y=a.getFullYear(),mo=a.getMonth()+1;y<b.getFullYear()||(y==b.getFullYear()&&mo<=b.getMonth()+1);mo==12?(y++,mo=1):mo++){const yy=y,mm=mo;
+   tasks.push(async()=>parseDaily(await relay('typ02/openApi/SeaMtlyInfoService/'+m.op,{pageNo:'1',numOfRows:'99',dataType:'JSON',year:String(yy),month:String(mm).padStart(2,'0'),station:st.stn},key),yy,mm));}}
+ const show=d=>{const p=Math.floor(d*100/tasks.length),el=(Date.now()-t0)/1000,rem=d?el*(tasks.length-d)/d:0;
+  box.innerHTML=`<div class="sub">${st.name} 받는 중 ${p}% (${d}/${tasks.length})${rem>3?` · 남은 시간 약 ${rem<90?Math.round(rem)+'초':Math.round(rem/60)+'분'}`:''}</div><div class="bar"><i style="width:${p}%"></i></div>`;};
+ show(0);
+ try{const parts=await pool(tasks,4,show);let rows=[].concat(...parts);let cols,head;
+  if(st.tp=='B'){const lo=f2(a),hi=f2(b);rows=rows.filter(r=>r.TM>=lo&&r.TM<=hi);const seen=new Set();rows=rows.filter(r=>!seen.has(r.TM)&&seen.add(r.TM));rows.sort((x,y)=>x.TM<y.TM?-1:1);
+   cols=BCOLS.filter(c=>c=='TM'||c=='STN'||rows.some(r=>r[c]!==''));head=c=>BHEAD[c]||c;}
+  else{const lo=iso(a),hi=iso(b);rows=rows.filter(r=>r.date>=lo&&r.date<=hi);rows.sort((x,y)=>x.date<y.date?-1:1);
+   cols=['date'];rows.forEach(r=>Object.keys(r).forEach(k=>{if(!cols.includes(k))cols.push(k)}));cols=cols.filter(c=>c=='date'||rows.some(r=>r[c]!==''&&r[c]!=null));
+   head=c=>c=='date'?'날짜':(DHEAD[c]?`${DHEAD[c]}(${c})`:c);}
+  if(!rows.length)throw new Error('받은 자료가 없습니다 (이 기간에 관측이 없거나 지점 자료가 제공되지 않습니다)');
+  const csv='﻿'+['지점명,'+cols.map(head).join(',')].concat(rows.map(r=>`${st.name},`+cols.map(c=>r[c]??'').join(','))).join('\r\n');
+  const fn=`${st.name}_${st.stn}_${st.tp=='B'?'30분':'일'}_${iso(a).replace(/-/g,'')}-${iso(b).replace(/-/g,'')}.csv`;
+  const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),el=document.createElement('a');el.href=u;el.download=fn;el.click();
+  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div>`;}
+ catch(e){box.innerHTML=`<span class="err">${e.message}</span>`;}
+ finally{JOB=null;}}
 function dlBox(){return `<div class="box"><h3>자료 내려받기 (CSV)</h3>${PRESETS.map((p,i)=>`<button class="preset" data-i="${i}" onclick="preset(${i})"><b>${p.n}</b>${p.t?`<span class="tag">${p.t}</span>`:''}<small>${p.m}</small></button>`).join('')}
  <div class="row"><input type="date" id="d1" onchange="est()"> ~ <input type="date" id="d2" onchange="est()"></div>
  <div class="est" id="est"></div><button class="btn pri" onclick="dl()">CSV 내려받기</button>
- <h3 style="margin-top:14px">1년·5년·10년 자료 받기 (기상청)</h3>
- ${LONG.map(([n,t,m])=>`<div class="preset" style="cursor:default"><b>${n}</b><span class="tag">${t}</span><small>${m}</small></div>`).join('')}
- <a class="btn pri" style="display:inline-block;text-decoration:none;margin:4px 0" href="${KMA}" target="_blank" rel="noopener">기상청 기상자료개방포털에서 받기 ↗</a>
- <div class="sub" style="line-height:1.7">열린 페이지에서 <b>로그인</b> → 지점 <b>${SEL.name} (${SEL.stn})</b> 선택 → 기간·요소 선택 → 조회 → CSV 다운로드<br>
- · 시간자료는 한 번에 최대 1년씩 받을 수 있습니다 (5년이면 5번)<br>· 일자료는 10년까지 한 번에 받을 수 있습니다<br>· 회원가입·이용은 무료입니다</div></div></div>`;}
+ <h3 style="margin-top:16px">1년·5년·10년 자료 받기</h3>${longBox()}</div></div>`;}
 const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 function preset(i){const p=PRESETS[i],t=new Date(),s=new Date(t-(p.d-1)*864e5);document.getElementById('d1').value=iso(s);document.getElementById('d2').value=iso(t);
  document.querySelectorAll('.preset[data-i]').forEach(b=>b.classList.toggle('on',+b.dataset.i==i));est();}
