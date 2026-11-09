@@ -164,7 +164,7 @@ async function ldl(){const box=document.getElementById('ljob'),key=document.getE
    cols=BCOLS.filter(c=>c=='TM'||c=='STN'||rows.some(r=>r[c]!==''));head=c=>BHEAD[c]||c;}
   else{const lo=iso(a),hi=iso(b);rows=rows.filter(r=>r.date>=lo&&r.date<=hi);rows.sort((x,y)=>x.date<y.date?-1:1);
    cols=['date'];rows.forEach(r=>Object.keys(r).forEach(k=>{if(!cols.includes(k))cols.push(k)}));cols=cols.filter(c=>c=='date'||rows.some(r=>r[c]!==''&&r[c]!=null));
-   head=c=>c=='date'?'날짜':(DHEAD[c]?`${DHEAD[c]}(${c})`:c);}
+   const H2={...DHEAD,...(st.tp=='L'?{tw_:'평균 습도'}:{})};head=c=>c=='date'?'날짜':(H2[c]?`${H2[c]}(${c})`:c);}
   if(!rows.length)throw new Error('받은 자료가 없습니다 (이 기간에 관측이 없거나 지점 자료가 제공되지 않습니다)');
   const csv='﻿'+['지점명,'+cols.map(head).join(',')].concat(rows.map(r=>`${st.name},`+cols.map(c=>r[c]??'').join(','))).join('\r\n');
   const fn=`${st.name}_${st.stn}_${st.tp=='B'?'30분':'일'}_${iso(a).replace(/-/g,'')}-${iso(b).replace(/-/g,'')}.csv`;
