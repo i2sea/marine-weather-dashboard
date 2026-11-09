@@ -45,7 +45,7 @@ canvas{width:100%!important}
 <main><div id="map"></div><aside>
 <div class="filters" id="filters"></div>
 <div id="panel"><div class="empty">지도에서 관측 지점을 누르면 최신값과 최근 변화 그래프가 나오고, 원하는 기간의 자료를 내려받을 수 있습니다.<br><br>
-· 화살표: 바람이 불어가는 방향, 숫자: 풍속(m/s)<br>· 동그라미: 바람 관측이 없는 지점(파고부이 등), 숫자: 유의파고(m)<br>· 기상청 해양기상관측을 매시간 받아 갱신합니다 (출처: 기상청 API허브).</div></div>
+· 화살표: 바람이 불어가는 방향, 숫자: 풍속(m/s)<br>· 동그라미: 바람 관측이 없는 지점(파고부이 등), 숫자: 유의파고(m)<br>· 기상청 해양기상관측을 매시간 받아 갱신합니다 (출처: 기상청 API허브).<br>· <b>지도의 빈 곳(바다)을 누르면</b> 그 위치의 재현바람장(10·80·140·220m 바람, 5년)을 받을 수 있습니다.</div></div>
 </aside></main>
 <script>
 const TYPES={B:["해양기상부이","#1f6feb"],C:["파고부이","#0e9384"],L:["등표","#c4320a"],N:["조위관측소","#6941c6"],F:["연안방재관측","#b54708"],J:["기상1호","#475467"]};
@@ -143,13 +143,16 @@ function longBox(){const m=LMODE[SEL.tp];
  return `${LONG.map(([n,t,m2],i)=>`<button class="preset" data-l="${i}" onclick="lpreset(${i})"><b>${n}</b><span class="tag">${t}</span><small>${m2}</small></button>`).join('')}
  <div class="row"><input type="date" id="l1"> ~ <input type="date" id="l2"></div>
  <div class="sub">받는 자료: <b>${m.kind}</b>${SEL.tp!='B'?' · 시간자료 장기분은 <a href="https://data.kma.go.kr" target="_blank" rel="noopener">기상자료개방포털</a>(해양 메뉴)':''}</div>
- <div class="keybox"><div class="keytitle">🔑 내 기상청 API허브 인증키</div>
+ ${keyBox(m.api)}
+ <button class="btn pri" onclick="ldl()">CSV 받기</button> <button class="btn" onclick="if(JOB)JOB.stop=true">취소</button>
+ <div id="ljob" style="margin-top:8px"></div>`;}
+function keyBox(api){return `<div class="keybox"><div class="keytitle">🔑 내 기상청 API허브 인증키</div>
  <input type="password" id="ukey" placeholder="여기에 인증키를 붙여 넣으세요" value="${lsGet('kmaKey')}" autocomplete="off">
  <label class="sub" style="display:block;margin-top:6px"><input type="checkbox" id="ukeep" ${lsGet('kmaKey')?'checked':''}> 이 브라우저에 키 기억하기</label>
  <div class="sub" style="line-height:1.6;margin-top:4px">· 각자 자기 키로 기상청에서 직접 받습니다. 키는 저장·기록하지 않고 기상청에 전달만 합니다.<br>
- · 키 발급: <a href="https://apihub.kma.go.kr" target="_blank" rel="noopener">기상청 API허브</a> 가입 → <b>${m.api}</b> 활용신청(무료, 즉시)</div></div>
- <button class="btn pri" onclick="ldl()">CSV 받기</button> <button class="btn" onclick="if(JOB)JOB.stop=true">취소</button>
- <div id="ljob" style="margin-top:8px"></div>`;}
+ · 키 발급: <a href="https://apihub.kma.go.kr" target="_blank" rel="noopener">기상청 API허브</a> 가입 → <b>${api}</b> 활용신청(무료, 즉시)</div></div>`;}
+function getKey(box){const key=document.getElementById('ukey').value.trim();if(!key){box.innerHTML='<span class="err">인증키를 넣어 주세요</span>';return '';}
+ lsSet('kmaKey',document.getElementById('ukeep').checked?key:'');return key;}
 function lpreset(i){const y=[1,5,10][i],t=new Date(),s=new Date(t);s.setFullYear(t.getFullYear()-y);s.setDate(s.getDate()+1);
  document.getElementById('l1').value=iso(s);document.getElementById('l2').value=iso(t);
  document.querySelectorAll('.preset[data-l]').forEach(b=>b.classList.toggle('on',+b.dataset.l==i));}
@@ -175,9 +178,7 @@ function parseDaily(t,y,mo){let j;try{j=JSON.parse(t)}catch(e){throw new Error('
 async function pool(tasks,n,onDone){let i=0,done=0;const res=new Array(tasks.length);
  async function w(){while(i<tasks.length){if(JOB.stop)throw new Error('취소했습니다');const k=i++;res[k]=await tasks[k]();onDone(++done);}}
  await Promise.all(Array.from({length:Math.min(n,tasks.length)},w));return res;}
-async function ldl(){const box=document.getElementById('ljob'),key=document.getElementById('ukey').value.trim();
- if(!key){box.innerHTML='<span class="err">인증키를 넣어 주세요</span>';return;}
- lsSet('kmaKey',document.getElementById('ukeep').checked?key:'');
+async function ldl(){const box=document.getElementById('ljob'),key=getKey(box);if(!key)return;
  const a=new Date(document.getElementById('l1').value+'T00:00'),b=new Date(document.getElementById('l2').value+'T23:59');
  if(!(a<=b)){box.innerHTML='<span class="err">기간을 확인해 주세요</span>';return;}
  const st=SEL,m=LMODE[st.tp],now=new Date();if(b>now)b.setTime(now.getTime());
@@ -222,5 +223,57 @@ async function dl(){if(!SER)SER=await (await fetch(`data/series/${SEL.stn}.json`
  document.getElementById('est').innerHTML+=` · ${rows.length}행 저장`;}
 const lg=L.control({position:'bottomleft'});lg.onAdd=()=>{const d=L.DomUtil.create('div','legend');
  d.innerHTML=Object.values(TYPES).map(([n,c])=>`<span class="dot" style="display:inline-block;background:${c}"></span> ${n}`).join('<br>')+'<br><span class="sub">화살표: 바람이 불어가는 방향</span>';return d;};lg.addTo(map);
+// ===== 재현바람장 (기상청 KIM-meso + AI, 1km, 10·80·140·220m, 2021.6~2026.5) =====
+const RW={min:'2021-06-01',max:'2026-05-31',api:'융합기상 › 에너지 지원 › 재현바람장 위·경도 추출 조회'};
+let PIN=null;
+map.on('click',e=>windPick(e.latlng.lat,e.latlng.lng));
+function windPick(lat,lon){lat=Math.round(lat*10000)/10000;lon=Math.round(lon*10000)/10000;SEL=null;SER=null;
+ if(PIN)PIN.setLatLng([lat,lon]);else PIN=L.marker([lat,lon],{icon:L.divIcon({className:'',iconSize:[22,30],iconAnchor:[11,28],html:'<div style="font-size:26px;line-height:1">📍</div>'})}).addTo(map);
+ const hs=(lsGet('rwH')||'80,140').split(',');
+ document.getElementById('panel').innerHTML=`<h2>재현바람장 <span class="sub">위치 직접 선택</span></h2>
+ <div class="sub">위도 <b>${lat}</b>, 경도 <b>${lon}</b> · 다른 곳을 누르면 위치가 바뀝니다</div>
+ <div class="box"><h3>이 위치의 고도별 바람 받기 (CSV)</h3>
+ <div class="sub" style="line-height:1.6;margin-bottom:6px">기상청이 수치예보모델(KIM-meso)과 AI 자료동화로 재현한 <b>1km 격자 바람</b>입니다. 관측소가 없는 바다 한가운데도 받을 수 있습니다.<br>· 기간: 2021.6.1 ~ 2026.5.31 (5년, 10분 간격)</div>
+ <div class="row" style="font-size:13px">고도 ${[10,80,140,220].map(h=>`<label><input type="checkbox" class="rwh" value="${h}" ${hs.includes(String(h))?'checked':''} onchange="rwEst()"> ${h}m</label>`).join(' ')}</div>
+ <div class="row" style="font-size:13px">간격 <select id="rwi" onchange="rwEst()"><option value="60">1시간 (추천)</option><option value="30">30분</option><option value="10">10분 (호출 많음)</option></select></div>
+ <button class="preset on" data-r="0" onclick="rwPreset(0)"><b>전체 5년</b><span class="tag">추천</span><small>재현바람장 전체 기간 — 연변동까지 반영한 풍황 검토</small></button>
+ <button class="preset" data-r="1" onclick="rwPreset(1)"><b>최근 1년</b><span class="tag">빠른 확인</span><small>2025.6 ~ 2026.5 — 계절 변화 확인</small></button>
+ <div class="row"><input type="date" id="r1" min="${RW.min}" max="${RW.max}" value="${RW.min}" onchange="rwEst()"> ~ <input type="date" id="r2" min="${RW.min}" max="${RW.max}" value="${RW.max}" onchange="rwEst()"></div>
+ <div class="est" id="rwest"></div>
+ ${keyBox(RW.api)}
+ <button class="btn pri" onclick="rwDl(${lat},${lon})">CSV 받기</button> <button class="btn" onclick="if(JOB)JOB.stop=true">취소</button>
+ <div id="rwjob" style="margin-top:8px"></div></div>`;rwEst();}
+function rwPreset(i){document.getElementById('r1').value=i?'2025-06-01':RW.min;document.getElementById('r2').value=RW.max;
+ document.querySelectorAll('.preset[data-r]').forEach(b=>b.classList.toggle('on',+b.dataset.r==i));rwEst();}
+function rwHs(){return [...document.querySelectorAll('.rwh:checked')].map(x=>+x.value);}
+function rwChunks(itv){const a=new Date(document.getElementById('r1').value+'T09:00'),b=new Date(document.getElementById('r2').value+'T08:50');b.setDate(b.getDate()+1);
+ const out=[],step=144*itv*6e4;for(let s=a.getTime();s<=b.getTime();s+=step)out.push([new Date(s),new Date(Math.min(s+step-itv*6e4,b.getTime()))]);return out;}
+function rwEst(){const el=document.getElementById('rwest');if(!el)return;const itv=+document.getElementById('rwi').value,hs=rwHs(),n=rwChunks(itv).length*hs.length;
+ el.innerHTML=hs.length?`호출 약 ${n.toLocaleString()}번 · 예상 약 ${n*0.6/4<90?Math.max(1,Math.round(n*0.6/4))+'초':Math.round(n*0.6/4/60)+'분'} (고도 ${hs.join('·')}m)`:'<span class="err">고도를 하나 이상 고르세요</span>';}
+function parseRawm(t){const out=[];let cols=null;
+ for(let ln of t.split(/\r?\n/)){ln=ln.trim();if(!ln)continue;
+  if(ln[0]=='#'){const tk=ln.replace(/^#+/,'').trim().split(/[\s,]+/).filter(Boolean);if(tk.some(x=>/^(WD|WS|WSD|WDR|TM|YYMMDDHHMI|LAT|LON)/i.test(x)))cols=tk.map(x=>x.toUpperCase());continue;}
+  if(ln.endsWith('='))ln=ln.slice(0,-1).trim();const p=ln.split(/[\s,]+/).filter(x=>x!=='');const ti=p.findIndex(x=>/^\d{12}$/.test(x));if(ti<0)continue;
+  let wd=null,ws=null;if(cols&&cols.length==p.length){cols.forEach((c,i)=>{if(/^WD/.test(c))wd=p[i];else if(/^WS/.test(c))ws=p[i];});}
+  if(wd==null||ws==null){const nums=p.filter((x,i)=>i!=ti&&/^-?\d+(\.\d+)?$/.test(x));wd=nums[nums.length-2];ws=nums[nums.length-1];}
+  const c=v=>MISS.has(String(v))||v==null?'':v;out.push({tm:p[ti],wd:c(wd),ws:c(ws)});}
+ return out;}
+async function rwDl(lat,lon){const box=document.getElementById('rwjob'),key=getKey(box);if(!key)return;const hs=rwHs(),itv=+document.getElementById('rwi').value;
+ if(!hs.length){box.innerHTML='<span class="err">고도를 하나 이상 고르세요</span>';return;}try{localStorage.setItem('rwH',hs.join(','))}catch(e){}
+ const f2=d=>`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+ const ch=rwChunks(itv),tasks=[];JOB={stop:false};const t0=Date.now();
+ for(const h of hs)for(const[a,b]of ch)tasks.push(async()=>({h,rows:parseRawm(await relay('typ01/cgi-bin/url/nph-rawm_latlon_api',{tm1:f2(a),tm2:f2(b),ht:String(h),lat:String(lat),lon:String(lon),itv:String(itv)},key))}));
+ const show=d=>{const p=Math.floor(d*100/tasks.length),el=(Date.now()-t0)/1000,rem=d?el*(tasks.length-d)/d:0;
+  box.innerHTML=`<div class="sub">재현바람장 받는 중 ${p}% (${d}/${tasks.length})${rem>3?` · 남은 시간 약 ${rem<90?Math.round(rem)+'초':Math.round(rem/60)+'분'}`:''}</div><div class="bar"><i style="width:${p}%"></i></div>`;};
+ show(0);
+ try{const parts=await pool(tasks,4,show),M=new Map();
+  for(const{h,rows}of parts)for(const r of rows){const o=M.get(r.tm)||{tm:r.tm};o['wd'+h]=r.wd;o['ws'+h]=r.ws;M.set(r.tm,o);}
+  const rows=[...M.values()].sort((x,y)=>x.tm<y.tm?-1:1);if(!rows.length)throw new Error('받은 자료가 없습니다 (이 위치가 재현바람장 영역 밖이거나 기간을 확인하세요)');
+  const cols=hs.flatMap(h=>['wd'+h,'ws'+h]),head=c=>(c[1]=='d'?'풍향':'풍속')+c.slice(2)+'m'+(c[1]=='d'?'(deg)':'(m/s)');
+  const csv='﻿'+['시각(KST),위도,경도,'+cols.map(head).join(',')].concat(rows.map(r=>`${r.tm},${lat},${lon},`+cols.map(c=>r[c]??'').join(','))).join('\r\n');
+  const fn=`재현바람장_${lat}_${lon}_${hs.join('-')}m_${itv}분_${document.getElementById('r1').value.replace(/-/g,'')}-${document.getElementById('r2').value.replace(/-/g,'')}.csv`;
+  const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),el=document.createElement('a');el.href=u;el.download=fn;el.click();
+  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div>`;}
+ catch(e){box.innerHTML=`<span class="err">${e.message}</span>`;}finally{JOB=null;}}
 filters();refresh();setInterval(refresh,600000);
 </script></body></html>

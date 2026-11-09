@@ -7,6 +7,7 @@
 const ALLOW_PATHS = [
   /^typ01\/url\/kma_buoy2\.php$/,                                        // 해양기상부이 기간조회
   /^typ02\/openApi\/SeaMtlyInfoService\/getDaily(Buoy|Lhaws|WaveBuoy)$/, // 월보 일별자료
+  /^typ01\/cgi-bin\/url\/nph-rawm_latlon_api$/,                          // 재현바람장 위·경도 추출
 ];
 const ALLOW_ORIGINS = [
   "https://i2sea.github.io",
