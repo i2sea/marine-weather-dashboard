@@ -45,7 +45,8 @@ async function curSelect(code) {
     <div class="sub" style="line-height:1.7">· 국립해양조사원이 조화분석으로 예측한 <b>조류(밀물·썰물) 성분만</b>입니다. 태풍 때의 취송류·해일류, 해류는 들어 있지 않아 설계에는 여유를 더하거나 사업지 해양조사 값과 비교하세요.<br>
      · 예보지점은 대개 항로·수도(좁은 물길)에 있어 트인 바다의 사업지보다 유속이 크게 나올 수 있습니다. 거리와 지형을 함께 보세요.<br>
      · 유속은 해당 예보지점의 표층 기준입니다.</div></div>
-   <div class="box"><h3>내려받기</h3><button class="btn pri" onclick="curCSV()">최강·전류 시각 CSV (${c.t0} ~ ${c.t1})</button>
+   <button class="btn pri" style="margin-top:8px" onclick="curToAnalysis()">📊 조류 요약 분석 (빈도·조류 장미·월별)</button>
+   <div class="box"><h3>내려받기</h3><button class="btn" onclick="curCSV()">최강·전류 시각 CSV (${c.t0} ~ ${c.t1})</button>
     <div class="sub" style="margin-top:6px">출처: 국립해양조사원 조류예보(최강 창·낙조 및 전류), 공공데이터포털 · 공공누리 제1유형(출처표시)</div></div>`;
   map.setView([c.lat, c.lon], Math.max(map.getZoom(), 10));
   try {
@@ -74,3 +75,81 @@ function curNearHTML(lat, lon) {
 }
 filters();
 curLoad();
+
+// ===================================================================== 분석 › 조류 요약
+// 자료: 조류예보 지점(최강류 시각만) 또는 직접 측정(ADCP 등) CSV의 유속·유향 열
+const CBINS = [[0, 0.25], [0.25, 0.5], [0.5, 0.75], [0.75, 1.0], [1.0, 99]];
+function dsFromCur(c, s) {
+  const idx = s.t.map((_, i) => i).filter(i => s.s[i] > 0);  // 전류(정조, 0) 시각은 빼고 최강류만
+  const nul = idx.map(() => null);
+  dsAdd({ id: 'cur-' + c.code, name: `${c.name}(${c.code}) 조류예보`, kind: '조류예보 최강류(창·낙조 최강 시각만)', curFcst: true, z: null,
+    t: idx.map(i => new Date(s.t[i].replace(' ', 'T')).getTime()), cs: idx.map(i => s.s[i]), cd: idx.map(i => s.d[i]), ws: nul, wd: nul, wh: nul });
+}
+async function curToAnalysis() {
+  const c = CURSEL; if (!c) return;
+  if (!c.ser) c.ser = await (await fetch(`data/currents/${c.code}.json`)).json();
+  dsFromCur(c, c.ser); DSEL = 'cur-' + c.code; AN.tab = 'cur'; openAnalysis();
+}
+function curStats(d) {
+  const v = [], mon = Array.from({ length: 12 }, () => ({ n: 0, s: 0, mx: 0 })), rose = Array.from({ length: 16 }, () => new Array(CBINS.length).fill(0));
+  let mx = -1, mxi = -1, rn = 0;
+  d.t.forEach((t, i) => {
+    const s = d.cs[i]; if (s == null) return; v.push(s);
+    if (s > mx) { mx = s; mxi = i; }
+    const m = mon[new Date(t).getMonth()]; m.n++; m.s += s; if (s > m.mx) m.mx = s;
+    const dr = d.cd && d.cd[i]; if (dr != null && s > 0) { const sec = Math.round(((dr % 360) + 360) % 360 / 22.5) % 16, b = CBINS.findIndex(([lo, hi]) => s >= lo && s < hi); rose[sec][b < 0 ? CBINS.length - 1 : b]++; rn++; }
+  });
+  const so = v.slice().sort((a, b) => a - b), mean = v.reduce((a, b) => a + b, 0) / (v.length || 1);
+  const step = 0.1, nb = Math.max(1, Math.ceil((mx > 0 ? mx : 0.1) / step)), hist = new Array(nb).fill(0);
+  v.forEach(x => hist[Math.min(nb - 1, Math.floor(x / step))]++);
+  const exc = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0].map(th => [th, v.filter(x => x >= th).length * 100 / (v.length || 1)]);
+  // 두 주 흐름 방향 (최강 유향 ±90°)
+  const md = mxi >= 0 && d.cd ? d.cd[mxi] : null, grp = [];
+  if (md != null) {
+    const g = [[], []];
+    d.t.forEach((_, i) => { const s = d.cs[i], dr = d.cd[i]; if (s == null || dr == null || s <= 0) return; g[Math.abs((dr - md + 540) % 360 - 180) <= 90 ? 0 : 1].push([s, dr]); });
+    g.forEach(a => { if (!a.length) return; const sx = a.reduce((p, [, dr]) => p + Math.sin(dr * Math.PI / 180), 0), cx = a.reduce((p, [, dr]) => p + Math.cos(dr * Math.PI / 180), 0);
+      grp.push({ dir: Math.round((Math.atan2(sx, cx) * 180 / Math.PI + 360) % 360), max: amax(a.map(x => x[0])), mean: a.reduce((p, x) => p + x[0], 0) / a.length, n: a.length }); });
+  }
+  return { n: v.length, mx, mxt: mxi >= 0 ? d.t[mxi] : null, mxd: md, mean, p50: pctl(so, .5), p90: pctl(so, .9), p95: pctl(so, .95), p99: pctl(so, .99), hist, step, exc, mon, rose, rn, grp };
+}
+function curView(out, d) {
+  if (!dsHas(d, 'cs')) {
+    out.innerHTML = `<div class="sub" style="line-height:1.7">이 자료에는 유속이 없습니다.<br>· 지도에서 <b style="color:${CURCOL}">청록 마름모(조류예보 지점)</b>를 누르고 "조류 요약 분석"을 누르거나,<br>· 직접 측정한 유속(ADCP 등) CSV를 올릴 때 <b>유속·유향 열</b>을 지정하세요.</div>`; return;
+  }
+  const S = curStats(d), dt = S.mxt ? new Date(S.mxt) : null, hh = dt ? `${iso(dt)} ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}` : '–';
+  out.innerHTML = `${d.curFcst ? `<div class="sub" style="background:#e6f4f5;border-radius:8px;padding:7px 9px;margin:6px 0;line-height:1.6">국립해양조사원 <b>예측 최강류</b>(창·낙조가 가장 셀 때) 값만으로 낸 통계입니다. 연속 관측이 아니라 평균·빈도는 '최강일 때' 기준이며, 조석 성분만 들어 있습니다.</div>` : ''}
+  <div class="grid">
+   <div class="kv"><span>최대 유속</span><b style="color:${CURCOL}">${f(S.mx, 2)} m/s</b></div>
+   <div class="kv"><span>그때 유향 (흘러가는 쪽)</span><b>${S.mxd != null ? Math.round(S.mxd) + '° ' + dirName(S.mxd) : '–'}</b></div>
+   <div class="kv"><span>최대 발생 시각</span><b style="font-size:12px">${hh}</b></div>
+   <div class="kv"><span>평균 유속</span><b>${f(S.mean, 2)}</b></div>
+   <div class="kv"><span>50% / 90%</span><b>${f(S.p50, 2)} / ${f(S.p90, 2)}</b></div>
+   <div class="kv"><span>95% / 99%</span><b>${f(S.p95, 2)} / ${f(S.p99, 2)}</b></div></div>
+  ${S.grp.length ? `<table class="tbl"><tr><th>주 흐름 방향 (흘러가는 쪽)</th><th>최대</th><th>평균</th><th>횟수</th></tr>${S.grp.map(g => `<tr><td>${g.dir}° ${dirName(g.dir)}</td><td>${f(g.max, 2)}</td><td>${f(g.mean, 2)}</td><td>${g.n.toLocaleString()}</td></tr>`).join('')}</table>` : ''}
+  <h3 style="font-size:14px;margin:10px 0 4px">유속 빈도 (0.1 m/s 구간)</h3><canvas id="c_hist" height="170"></canvas>
+  <table class="tbl"><tr><th>초과 유속</th>${S.exc.map(([t]) => `<th>≥${t}</th>`).join('')}</tr><tr><td>비율(%)</td>${S.exc.map(([, p]) => `<td>${f(p, 1)}</td>`).join('')}</tr></table>
+  <h3 style="font-size:14px;margin:10px 0 4px">조류 장미 (흘러가는 방향 기준)</h3>${S.rn ? roseSVG({ rose: S.rose, rn: S.rn }, CBINS, 'm/s') : '<div class="sub">유향 자료가 없습니다</div>'}
+  <h3 style="font-size:14px;margin:10px 0 4px">월별 평균·최대 유속</h3><canvas id="c_mon" height="170"></canvas>
+  <div class="box"><h3>기초 구조물 계산에 넣을 때</h3>
+   <div style="font-size:13px;line-height:1.7">조류 표층 유속 후보: <b style="color:${CURCOL}">${f(S.mx, 2)} m/s</b> (자료 기간 최대) · 참고: 99% 값 ${f(S.p99, 2)} m/s</div>
+   <div class="sub" style="line-height:1.6">· ${d.curFcst ? '조석 예측값이라 태풍 때의 취송류·해일류는 빠져 있습니다. 설계에는 여유를 더하거나 사업지 해양조사(ADCP) 결과와 비교하세요.' : '측정 기간이 짧으면 대조기(사리)·폭풍 시 최대가 빠질 수 있습니다. 최소 한 달(대조기 2번)은 넘는 자료를 쓰세요.'}<br>
+   · 수심별 분포가 필요하면 기초 계산 도구의 1/7승 분포처럼 표층 값을 기준으로 줄여 씁니다.</div></div>
+  <button class="btn" onclick="curSumCSV()">요약 CSV 받기</button>`;
+  chart2('c_hist', { type: 'bar', data: { labels: S.hist.map((_, i) => (i * S.step).toFixed(1)), datasets: [{ label: '비율(%)', data: S.hist.map(n => n * 100 / S.n), backgroundColor: CURCOL }] },
+    options: { animation: false, plugins: { legend: { display: false } }, scales: { x: { title: { display: true, text: 'm/s (구간 시작값)' } }, y: { title: { display: true, text: '%' } } } } });
+  chart2('c_mon', { type: 'bar', data: { labels: S.mon.map((_, i) => (i + 1) + '월'), datasets: [
+    { label: '평균', data: S.mon.map(m => m.n ? m.s / m.n : null), backgroundColor: '#66b2b9' }, { label: '최대', data: S.mon.map(m => m.n ? m.mx : null), backgroundColor: CURCOL }] },
+    options: { animation: false, plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'm/s' } } } } });
+  AN.lastCur = { d, S };
+}
+function curSumCSV() {
+  const { d, S } = AN.lastCur, L = [`자료,${d.name}`, `기간,${dsSpan(d)}`, `종류,${d.kind}`, '',
+    '항목,값', `자료 수,${S.n}`, `최대 유속(m/s),${S.mx.toFixed(3)}`, `최대 유향(deg 흘러가는 쪽),${S.mxd != null ? Math.round(S.mxd) : ''}`,
+    `최대 발생 시각,${S.mxt ? new Date(S.mxt).toLocaleString('ko-KR') : ''}`, `평균(m/s),${S.mean.toFixed(3)}`,
+    `50%,${S.p50.toFixed(3)}`, `90%,${S.p90.toFixed(3)}`, `95%,${S.p95.toFixed(3)}`, `99%,${S.p99.toFixed(3)}`, '',
+    '주 흐름 방향(deg),최대(m/s),평균(m/s),횟수', ...S.grp.map(g => `${g.dir},${g.max.toFixed(3)},${g.mean.toFixed(3)},${g.n}`), '',
+    '초과 유속(m/s),비율(%)', ...S.exc.map(([t, p]) => `${t},${p.toFixed(2)}`), '',
+    '월,평균(m/s),최대(m/s),자료 수', ...S.mon.map((m, i) => `${i + 1},${m.n ? (m.s / m.n).toFixed(3) : ''},${m.n ? m.mx.toFixed(3) : ''},${m.n}`)];
+  dlText(`조류요약_${d.name.replace(/[\\/:*?"<>|\s]/g, '_')}.csv`, L.join('\r\n'));
+}

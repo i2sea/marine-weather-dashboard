@@ -67,20 +67,21 @@ async function dsUpload(file) {
   UPL = { name: file.name.replace(/\.[^.]+$/, ''), head, rows,
     it: Math.max(0, guess(/시각|시간|일시|날짜|date|time|tm/i)),
     iws: guess(/풍속(?!.*돌풍)|ws|wind ?speed|spd/i), iwd: guess(/풍향|wd|wind ?dir/i), iwh: guess(/유의파고|^파고|hs|wh|wave ?height/i),
-    iwp: guess(/파주기|tp|period|wp/i), iwo: guess(/파향|wave ?dir|mwd|wo/i) };
+    iwp: guess(/파주기|tp|period|wp/i), iwo: guess(/파향|wave ?dir|mwd|wo/i),
+    ics: guess(/유속|current ?speed|crsp|cur.?spd/i), icd: guess(/유향|current ?dir|crdir|cur.?dir/i) };
   dsRender();
 }
 function uplColSel(id, cur, allowNone) {
   return `<select id="${id}">${allowNone ? `<option value="-1" ${cur < 0 ? 'selected' : ''}>(없음)</option>` : ''}${UPL.head.map((h, i) => `<option value="${i}" ${i === cur ? 'selected' : ''}>${h || '열' + (i + 1)}</option>`).join('')}</select>`;
 }
 function dsUploadAdd() {
-  const g = id => +document.getElementById(id).value, it = g('u_t'), iws = g('u_ws'), iwd = g('u_wd'), iwh = g('u_wh'), iwp = g('u_wp'), iwo = g('u_wo');
+  const g = id => +document.getElementById(id).value, it = g('u_t'), iws = g('u_ws'), iwd = g('u_wd'), iwh = g('u_wh'), iwp = g('u_wp'), iwo = g('u_wo'), ics = g('u_cs'), icd = g('u_cd'), cu = g('u_cu') || 1;
   const z = num(document.getElementById('u_z').value);
   const pts = [];
-  for (const r of UPL.rows) { const t = parseTime(r[it]); if (t == null) continue; pts.push([t, iws >= 0 ? num(r[iws]) : null, iwd >= 0 ? num(r[iwd]) : null, iwh >= 0 ? num(r[iwh]) : null, iwp >= 0 ? num(r[iwp]) : null, iwo >= 0 ? num(r[iwo]) : null]); }
+  for (const r of UPL.rows) { const t = parseTime(r[it]); if (t == null) continue; const cv = ics >= 0 ? num(r[ics]) : null; pts.push([t, iws >= 0 ? num(r[iws]) : null, iwd >= 0 ? num(r[iwd]) : null, iwh >= 0 ? num(r[iwh]) : null, iwp >= 0 ? num(r[iwp]) : null, iwo >= 0 ? num(r[iwo]) : null, cv == null ? null : cv * cu, icd >= 0 ? num(r[icd]) : null]); }
   if (!pts.length) { alert('시각 열을 읽지 못했습니다. 시각 열을 확인해 주세요.'); return; }
   pts.sort((a, b) => a[0] - b[0]);
-  dsAdd({ id: 'up-' + UPL.name + '-' + Date.now(), name: UPL.name + ' (올린 파일)', kind: '직접 측정', z, t: pts.map(p => p[0]), ws: pts.map(p => p[1]), wd: pts.map(p => p[2]), wh: pts.map(p => p[3]), wp: pts.map(p => p[4]), wo: pts.map(p => p[5]) });
+  dsAdd({ id: 'up-' + UPL.name + '-' + Date.now(), name: UPL.name + ' (올린 파일)', kind: '직접 측정', z, t: pts.map(p => p[0]), ws: pts.map(p => p[1]), wd: pts.map(p => p[2]), wh: pts.map(p => p[3]), wp: pts.map(p => p[4]), wo: pts.map(p => p[5]), cs: pts.map(p => p[6]), cd: pts.map(p => p[7]) });
   DSEL = DSL[DSL.length - 1].id; AN.mcp.tgt = DSEL; UPL = null; dsRender(); anRun();
 }
 
@@ -88,11 +89,11 @@ function dsUploadAdd() {
 function openAnalysis() {
   SEL = null; toPanel();
   document.getElementById('panel').innerHTML = `${navBtns(true)}<h2>📊 자료 분석</h2>
-  <div class="sub" style="line-height:1.6">지점 30일 자료, 장기·재현바람장으로 받은 자료, 직접 측정한 CSV를 골라 풍황 요약·작업 가능일·장기 보정(MCP)을 봅니다. 자료는 이 화면(브라우저)에만 있고 어디에도 올라가지 않습니다.</div>
+  <div class="sub" style="line-height:1.6">지점 30일 자료, 장기·재현바람장으로 받은 자료, 직접 측정한 CSV를 골라 풍황·파랑·조류 요약, 작업 가능일, 장기 보정(MCP)을 봅니다. 자료는 이 화면(브라우저)에만 있고 어디에도 올라가지 않습니다.</div>
   <div class="box"><h3>자료 보관함</h3><div id="dslist"></div>
    <label class="btn" style="display:inline-block;margin-top:6px">📂 측정 자료 CSV 올리기<input type="file" accept=".csv,.txt" style="display:none" onchange="dsUpload(this.files[0]);this.value=''"></label>
    <div id="upl"></div></div>
-  <div class="tabs" id="antabs">${[['wind', '풍황 요약'], ['wave', '파랑 요약'], ['work', '작업 가능일'], ['mcp', '장기 보정(MCP)']].map(([k, n]) => `<button data-k="${k}" onclick="AN.tab='${k}';anRun()">${n}</button>`).join('')}</div>
+  <div class="tabs" id="antabs">${[['wind', '풍황 요약'], ['wave', '파랑 요약'], ['cur', '조류 요약'], ['work', '작업 가능일'], ['mcp', '장기 보정(MCP)']].map(([k, n]) => `<button data-k="${k}" onclick="AN.tab='${k}';anRun()">${n}</button>`).join('')}</div>
   <div id="anout"></div>`;
   dsRender(); anRun();
 }
@@ -108,6 +109,7 @@ function dsRender() {
   u.innerHTML = UPL ? `<div class="box" style="margin-top:8px"><h3>${UPL.name} — 열 맞추기</h3>
     <div class="sub">${UPL.rows.length.toLocaleString()}줄 · 자동으로 고른 열이 맞는지 확인하세요</div>
     <div class="grid2">시각 ${uplColSel('u_t', UPL.it)} 풍속 ${uplColSel('u_ws', UPL.iws, true)} 풍향 ${uplColSel('u_wd', UPL.iwd, true)} 유의파고 ${uplColSel('u_wh', UPL.iwh, true)} 파주기 ${uplColSel('u_wp', UPL.iwp, true)} 파향 ${uplColSel('u_wo', UPL.iwo, true)}
+    유속 ${uplColSel('u_cs', UPL.ics, true)} 유속 단위 <select id="u_cu"><option value="1">m/s</option><option value="0.01">cm/s</option><option value="0.514444">knot</option></select> 유향(흘러가는 쪽) ${uplColSel('u_cd', UPL.icd, true)}
     측정 높이(m) <input id="u_z" type="number" step="0.1" placeholder="예: 100"></div>
     <button class="btn pri" onclick="dsUploadAdd()">보관함에 넣기</button> <button class="btn" onclick="UPL=null;dsRender()">취소</button></div>` : '';
 }
@@ -121,7 +123,7 @@ function anRun() {
   if (AN.tab === 'mcp') return mcpView(out);
   const d = dsGet(DSEL);
   if (!d) { out.innerHTML = '<div class="sub">위 보관함에서 분석할 자료를 고르세요.</div>'; return; }
-  if (AN.tab === 'wind') windView(out, d); else if (AN.tab === 'wave') waveView(out, d); else workView(out, d);
+  if (AN.tab === 'wind') windView(out, d); else if (AN.tab === 'wave') waveView(out, d); else if (AN.tab === 'cur') curView(out, d); else workView(out, d);
 }
 
 // ===================================================================== 풍황 요약
