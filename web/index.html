@@ -88,8 +88,12 @@ function head(){const s=SEL;document.getElementById('head').innerHTML=`<h2>${s.n
  <div class="grid"><div class="kv"><span>풍속 / 돌풍 (m/s)</span><b>${f(s.ws)} / ${f(s.gst)}</b></div><div class="kv"><span>풍향 (°)</span><b>${f(s.wd,0)}</b></div>
  <div class="kv"><span>유의파고 (m)</span><b>${f(s.wh)}</b></div><div class="kv"><span>수온 (℃)</span><b>${f(s.tw)}</b></div>
  <div class="kv"><span>기온 (℃)</span><b>${f(s.ta)}</b></div><div class="kv"><span>기압 (hPa)</span><b>${f(s.pa)}</b></div></div>`;}
+let PANEL0=null,LASTST=null;
+function showHome(){SEL=null;SER=null;if(typeof PIN!=='undefined'&&PIN){map.removeLayer(PIN);PIN=null;}document.getElementById('panel').innerHTML=PANEL0;}
+function goBack(){if(LASTST)select(LASTST);else showHome();}
+const navBtns=(back)=>`<div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:4px">${back&&LASTST?`<button class="btn" onclick="goBack()">← ${LASTST.name}(으)로</button>`:''}<button class="btn" title="닫기" onclick="showHome()">✕ 닫기</button></div>`;
 function toPanel(){if(innerWidth<820)setTimeout(()=>document.querySelector('aside').scrollIntoView({behavior:'smooth'}),50);}
-function select(s){SEL=s;SER=null;toPanel();document.getElementById('panel').innerHTML=`<div id="head"></div>
+function select(s){SEL=s;SER=null;LASTST=s;toPanel();if(typeof PIN!=='undefined'&&PIN){map.removeLayer(PIN);PIN=null;}document.getElementById('panel').innerHTML=`${navBtns(false)}<div id="head"></div>
  <div class="tabs">${[24,72,168,720].map(h=>`<button data-h="${h}" onclick="hours=${h};loadSeries()">${h/24}일</button>`).join('')}<span class="sub" id="sst" style="margin-left:6px"></span></div>
  <canvas id="ch" height="230"></canvas><button class="btn" style="margin-top:6px" onclick="DSEL='ser-${s.stn}';AN.tab='${s.ws==null?'wave':'wind'}';openAnalysis()">📊 최근 30일 ${s.ws==null?'파랑':'풍황·파랑'}·작업 가능일 분석</button>${hubBox()}${dlBox()}`;head();hubNow();loadSeries().then(()=>{preset(1);if(document.getElementById('l1'))lpreset(1);});}
 let SER=null,LASTROWS=[];
@@ -244,7 +248,7 @@ map.on('click',e=>windPick(e.latlng.lat,e.latlng.lng));
 function windPick(lat,lon){toPanel();lat=Math.round(lat*10000)/10000;lon=Math.round(lon*10000)/10000;SEL=null;SER=null;
  if(PIN)PIN.setLatLng([lat,lon]);else PIN=L.marker([lat,lon],{icon:L.divIcon({className:'',iconSize:[22,30],iconAnchor:[11,28],html:'<div style="font-size:26px;line-height:1">📍</div>'})}).addTo(map);
  const hs=(lsGet('rwH')||'80,140').split(',');
- document.getElementById('panel').innerHTML=`<h2>재현바람장 <span class="sub">위치 직접 선택</span></h2>
+ document.getElementById('panel').innerHTML=`${navBtns(true)}<h2>재현바람장 <span class="sub">위치 직접 선택</span></h2>
  <div class="sub">위도 <b>${lat}</b>, 경도 <b>${lon}</b> · 다른 곳을 누르면 위치가 바뀝니다</div>
  <div class="box"><h3>이 위치의 고도별 바람 받기 (CSV)</h3>
  <div class="sub" style="line-height:1.6;margin-bottom:6px">기상청이 수치예보모델(KIM-meso)과 AI 자료동화로 재현한 <b>1km 격자 바람</b>입니다. 관측소가 없는 바다 한가운데도 받을 수 있습니다.<br>· 기간: 2021.6.1 ~ 2026.5.31 (5년, 10분 간격)</div>
@@ -295,6 +299,7 @@ async function rwDl(lat,lon){const box=document.getElementById('rwjob'),key=getK
   dsFromRawm(lat,lon,hs,itv,rows);
   box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div><button class="btn" style="margin-top:4px" onclick="DSEL=DSL[DSL.length-1].id;openAnalysis()">📊 받은 자료 분석하기</button>`;}
  catch(e){box.innerHTML=`<span class="err">${e.message}</span>`;}finally{JOB=null;}}
+PANEL0=document.getElementById('panel').innerHTML;
 window.addEventListener('resize',()=>map.invalidateSize());
 filters();refresh();setInterval(refresh,600000);
 </script>

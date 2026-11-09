@@ -84,7 +84,7 @@ function dsUploadAdd() {
 // ===================================================================== 분석 화면
 function openAnalysis() {
   SEL = null; toPanel();
-  document.getElementById('panel').innerHTML = `<h2>📊 자료 분석</h2>
+  document.getElementById('panel').innerHTML = `${navBtns(true)}<h2>📊 자료 분석</h2>
   <div class="sub" style="line-height:1.6">지점 30일 자료, 장기·재현바람장으로 받은 자료, 직접 측정한 CSV를 골라 풍황 요약·작업 가능일·장기 보정(MCP)을 봅니다. 자료는 이 화면(브라우저)에만 있고 어디에도 올라가지 않습니다.</div>
   <div class="box"><h3>자료 보관함</h3><div id="dslist"></div>
    <label class="btn" style="display:inline-block;margin-top:6px">📂 측정 자료 CSV 올리기<input type="file" accept=".csv,.txt" style="display:none" onchange="dsUpload(this.files[0]);this.value=''"></label>
@@ -513,7 +513,7 @@ function openAreas(sel) {
      ${list.map(({ s, d }) => `<tr style="cursor:pointer" onclick="select(DATA.stations.find(x=>x.stn=='${s.stn}'))"><td>${s.name} (${s.stn})</td><td>${TYPES[s.tp]?.[0] || s.tp}</td><td>${d.toFixed(1)}km</td><td>${s.ws != null ? '○' : '–'}</td></tr>`).join('')}</table>
      <button class="btn pri" onclick="windPick(${c[0]},${c[1]})">중심점 재현바람장 받기</button> <button class="btn" onclick="AREAS.splice(${sel},1);areaSave();areaDraw();openAreas()">이 경계 지우기</button></div>`;
   }
-  document.getElementById('panel').innerHTML = `<h2>📐 사업지 경계</h2>
+  document.getElementById('panel').innerHTML = `${navBtns(true)}<h2>📐 사업지 경계</h2>
    <div class="sub" style="line-height:1.6">사업 구역 경계를 지도에 그리고 가까운 관측소와 거리를 봅니다. 경계는 이 브라우저에만 저장되고 어디에도 올라가지 않습니다.</div>
    <div class="box"><h3>불러오기</h3>
     <label class="btn" style="display:inline-block">📂 KML · GeoJSON · 좌표 파일<input type="file" accept=".kml,.geojson,.json,.csv,.txt" style="display:none" onchange="areaFile(this.files[0]);this.value=''"></label>
