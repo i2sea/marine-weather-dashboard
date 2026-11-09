@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>해양기상 실시간 관측</title>
+<title>해양 바람·파랑 관측 대시보드</title>
 <meta name="description" content="기상청 해양기상부이·파고부이·등표 관측을 지도로 보는 대시보드">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -50,7 +50,7 @@ canvas{width:100%!important}
  .grid{grid-template-columns:repeat(2,1fr)}.legend{display:none}
 }
 </style></head><body>
-<header><h1>해양기상 실시간 관측</h1><span class="meta" id="meta">불러오는 중…</span><span class="sp"></span>
+<header><h1>해양 바람·파랑 관측 대시보드</h1><span class="meta" id="meta">불러오는 중…</span><span class="sp"></span>
 <button onclick="openAnalysis()">📊 분석</button><button onclick="openAreas()">📐 사업지</button><button onclick="map.setView([36,127.8],7)">전국</button>
 <button onclick="refresh(true)">새로고침</button></header>
 <main><div id="map"></div><aside>
