@@ -382,23 +382,29 @@ function workCalc(d) {
   }
   const M = Array.from({ length: 12 }, () => ({ days: 0, good: 0, okc: 0, cnt: 0, years: new Set() }));
   for (const D of days.values()) { if (!D.cnt) continue; const m = M[D.m]; m.days++; m.okc += D.okc; m.cnt += D.cnt; m.years.add(D.y); if (D.best >= need) m.good++; }
-  const rows = M.map((m, i) => ({ mon: i + 1, pct: m.cnt ? m.okc * 100 / m.cnt : null, gdays: m.years.size ? m.good / m.years.size : null, days: m.years.size ? m.days / m.years.size : null, ny: m.years.size }));
-  const tot = rows.reduce((a, r) => a + (r.gdays || 0), 0);
-  document.getElementById('w_out').innerHTML = `<div class="grid"><div class="kv"><span>연간 작업 가능일</span><b>${f(tot, 0)}일</b></div>
+  // 달력 일수: 자료가 있던 해들의 그달 실제 일수 평균 (윤년 2월 반영)
+  const cal = (m, ys) => ys.size ? [...ys].reduce((a, y) => a + new Date(y, m + 1, 0).getDate(), 0) / ys.size : null;
+  const rows = M.map((m, i) => { const ny = m.years.size, gd = ny ? m.good / ny : null, dd = ny ? m.days / ny : null, cd = cal(i, m.years);
+    return { mon: i + 1, pct: m.cnt ? m.okc * 100 / m.cnt : null, gdays: gd, days: dd, cal: cd, rec: dd != null && cd ? dd * 100 / cd : null, gadj: gd != null && dd ? gd * cd / dd : null, ny }; });
+  const tot = rows.reduce((a, r) => a + (r.gdays || 0), 0), totAdj = rows.reduce((a, r) => a + (r.gadj || 0), 0);
+  document.getElementById('w_out').innerHTML = `<div class="grid"><div class="kv"><span>연간 작업 가능일 (자료 있는 날 / 결측 보정)</span><b>${f(tot, 0)} / ${f(totAdj, 0)}일</b></div>
    <div class="kv"><span>작업 가능 시간 비율</span><b>${f(rows.reduce((a, r, i) => a + M[i].okc, 0) * 100 / (M.reduce((a, m) => a + m.cnt, 0) || 1), 1)}%</b></div>
    <div class="kv"><span>자료 간격</span><b>${step}분</b></div></div>
    <canvas id="c_work" height="190"></canvas>
-   <table class="tbl"><tr><th>월</th><th>가능일/월</th><th>자료일/월</th><th>가능 시간%</th><th>자료 연수</th></tr>
-   ${rows.map(r => `<tr><td>${r.mon}월</td><td>${f(r.gdays, 1)}</td><td>${f(r.days, 1)}</td><td>${f(r.pct, 1)}</td><td>${r.ny}</td></tr>`).join('')}</table>
-   <div class="sub">여러 해 자료면 해마다 평균한 값입니다. 자료가 빠진 시간은 "불가"가 아니라 "모름"으로 보고 연속 구간을 끊습니다.</div>
+   <table class="tbl"><tr><th>월</th><th>가능일</th><th>가능일<br>(결측 보정)</th><th>자료 있는 날</th><th>달력일</th><th>회수율%</th><th>가능 시간%</th><th>연수</th></tr>
+   ${rows.map(r => `<tr><td>${r.mon}월</td><td>${f(r.gdays, 1)}</td><td><b>${f(r.gadj, 1)}</b></td><td>${f(r.days, 1)}</td><td>${f(r.cal, 1)}</td><td${r.rec != null && r.rec < 80 ? ' style="color:#b42318"' : ''}>${f(r.rec, 0)}</td><td>${f(r.pct, 1)}</td><td>${r.ny}</td></tr>`).join('')}</table>
+   <div class="sub" style="line-height:1.6">· 값은 모두 한 달 기준, 여러 해면 해마다 평균입니다.<br>· <b>자료 있는 날</b>: 그날 판단에 필요한 관측(파고·풍속)이 하나라도 있었던 날. 부이 고장·점검이나 기간의 첫·끝 달 때문에 달력일보다 적을 수 있습니다.<br>
+   · <b>가능일(결측 보정)</b> = 가능일 × 달력일 ÷ 자료 있는 날 — 빠진 날도 같은 비율로 작업 가능했다고 본 달력 기준 추정입니다. 회수율이 80% 미만(빨간색)인 달은 참고만 하세요.<br>
+   · 자료가 빠진 시간은 "불가"가 아니라 "모름"으로 보고 연속 구간을 끊습니다.</div>
    <button class="btn" onclick="workCSV()">작업 가능일 CSV 받기</button>`;
   chart2('c_work', { type: 'bar', data: { labels: rows.map(r => r.mon + '월'), datasets: [{ label: `작업 가능일(일/월) — ${hasH ? `Hs≤${W.hs}m ` : ''}${hasW ? `WS≤${W.ws}m/s ` : ''}${W.hrs}시간 연속`, data: rows.map(r => r.gdays), backgroundColor: '#0e9384' }] },
     options: { animation: false, plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } }, scales: { y: { beginAtZero: true, max: 31, title: { display: true, text: '일' } } } } });
   AN.lastWork = { d, rows, W, hasH, hasW };
 }
 function workCSV() {
-  const { d, rows, W, hasH, hasW } = AN.lastWork, L = [`자료,${d.name}`, `기간,${dsSpan(d)}`, `기준,${hasH ? `유의파고<=${W.hs}m ` : ''}${hasW ? `풍속<=${W.ws}m/s${AN.hub && d.z ? `(허브${HUB.h}m 환산)` : ''} ` : ''}연속 ${W.hrs}시간`, '', '월,작업가능일(일/월),자료일(일/월),작업가능시간(%),자료연수'];
-  rows.forEach(r => L.push(`${r.mon},${r.gdays == null ? '' : r.gdays.toFixed(2)},${r.days == null ? '' : r.days.toFixed(2)},${r.pct == null ? '' : r.pct.toFixed(2)},${r.ny}`));
+  const { d, rows, W, hasH, hasW } = AN.lastWork, L = [`자료,${d.name}`, `기간,${dsSpan(d)}`, `기준,${hasH ? `유의파고<=${W.hs}m ` : ''}${hasW ? `풍속<=${W.ws}m/s${AN.hub && d.z ? `(허브${HUB.h}m 환산)` : ''} ` : ''}연속 ${W.hrs}시간`, '', '월,작업가능일(일/월),작업가능일_결측보정(일/월),자료있는날(일/월),달력일(일/월),회수율(%),작업가능시간(%),자료연수'];
+  const x = v => v == null ? '' : v.toFixed(2);
+  rows.forEach(r => L.push(`${r.mon},${x(r.gdays)},${x(r.gadj)},${x(r.days)},${x(r.cal)},${x(r.rec)},${x(r.pct)},${r.ny}`));
   dlText(`작업가능일_${d.name.replace(/[\\/:*?"<>|\s]+/g, '_')}.csv`, L.join('\r\n'));
 }
 
