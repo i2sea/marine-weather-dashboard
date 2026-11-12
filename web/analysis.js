@@ -518,6 +518,7 @@ function openAreas(sel) {
      ${list.map(({ s, d }) => `<tr style="cursor:pointer" onclick="select(DATA.stations.find(x=>x.stn=='${s.stn}'))"><td>${s.name} (${s.stn})</td><td>${TYPES[s.tp]?.[0] || s.tp}</td><td>${d.toFixed(1)}km</td><td>${s.ws != null ? '○' : '–'}</td></tr>`).join('')}</table>
      <button class="btn pri" onclick="windPick(${c[0]},${c[1]})">중심점 재현바람장 받기</button> <button class="btn" onclick="AREAS.splice(${sel},1);areaSave();areaDraw();openAreas()">이 경계 지우기</button></div>`;
     if (typeof curNearHTML === 'function') near += curNearHTML(c[0], c[1]);
+    if (typeof asosNearHTML === 'function') near += asosNearHTML(c[0], c[1]);
   }
   document.getElementById('panel').innerHTML = `${navBtns(true)}<h2>📐 사업지 경계</h2>
    <div class="sub" style="line-height:1.6">사업 구역 경계를 지도에 그리고 가까운 관측소와 거리를 봅니다. 경계는 이 브라우저에만 저장되고 어디에도 올라가지 않습니다.</div>

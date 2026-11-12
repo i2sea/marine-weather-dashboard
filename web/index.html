@@ -269,7 +269,7 @@ async function dl(){if(!SER)SER=await (await fetch(`data/series/${SEL.stn}.json`
  el.href=u;el.download=`${SEL.name}_${SEL.stn}_${iso(a).replace(/-/g,'')}-${iso(b).replace(/-/g,'')}.csv`;el.click();
  document.getElementById('est').innerHTML+=` · ${rows.length}행 저장`;}
 const lg=L.control({position:'bottomleft'});lg.onAdd=()=>{const d=L.DomUtil.create('div','legend');
- d.innerHTML=Object.values(TYPES).map(([n,c])=>`<span class="dot" style="display:inline-block;background:${c}"></span> ${n}`).join('<br>')+'<br><span style="display:inline-block;width:9px;height:9px;background:#0b7285;transform:rotate(45deg);margin:0 2px"></span> 조류예보(국립해양조사원)<br><span class="sub">화살표: 바람이 불어가는 방향</span>';return d;};lg.addTo(map);
+ d.innerHTML=Object.values(TYPES).map(([n,c])=>`<span class="dot" style="display:inline-block;background:${c}"></span> ${n}`).join('<br>')+'<br><span style="display:inline-block;width:9px;height:9px;background:#0b7285;transform:rotate(45deg);margin:0 2px"></span> 조류예보(국립해양조사원)<br><svg width="11" height="11" viewBox="0 0 12 12" style="vertical-align:-1px;margin:0 1px"><path d="M6 1L11 11H1Z" fill="#7a5af8"/></svg> ASOS 육상 관측소<br><span class="sub">화살표: 바람이 불어가는 방향</span>';return d;};lg.addTo(map);
 // ===== 재현바람장 (기상청 KIM-meso + AI, 1km, 10·80·140·220m, 2021.6~2026.5) =====
 const RW={min:'2021-06-01',max:'2026-05-31',api:'융합기상 › 에너지 지원 › 재현바람장 위·경도 추출 조회'};
 let PIN=null;
@@ -334,4 +334,5 @@ window.addEventListener('resize',()=>map.invalidateSize());
 filters();refresh();setInterval(refresh,600000);
 </script>
 <script src="analysis.js"></script>
-<script src="currents.js"></script></body></html>
+<script src="currents.js"></script>
+<script src="asos.js"></script></body></html>

@@ -165,6 +165,11 @@ def main():
     with open(os.path.join(out_data, "latest.json"), "w", encoding="utf-8") as f:
         json.dump({"base": base, "built": now.strftime("%Y-%m-%d %H:%M"), "days": a.days,
                    "stations": latest}, f, ensure_ascii=False, separators=(",", ":"))
+    try:  # 기상청 종관기상관측(ASOS) 지점·최신 관측
+        import asos
+        asos.build(out_data, key)
+    except Exception as e:  # noqa: BLE001
+        print("ASOS 단계 건너뜀:", e)
     try:  # 국립해양조사원 조류예보 (공공데이터포털 키가 있을 때만 새로 받음, 실패해도 사이트는 만듦)
         import currents
         currents.build(out_data)
