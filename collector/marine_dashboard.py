@@ -1,4 +1,4 @@
-"""해양 바람·파랑 관측 대시보드 (기상청 API허브)  v0.1  2026-11-06
+"""기상 데이터(바람·파랑) 관측 대시보드 (기상청 API허브)  v0.1  2026-11-06
 
 실행:  python marine_dashboard.py        → 브라우저에 http://localhost:8765 이 열립니다.
 필요:  같은 폴더에 marine_collector.py, kma_key.txt(인증키 한 줄)
@@ -220,7 +220,7 @@ class H(BaseHTTPRequestHandler):
 
 PAGE = r"""<!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>해양 바람·파랑 관측 대시보드</title>
+<title>기상 데이터(바람·파랑) 관측 대시보드</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -254,7 +254,7 @@ canvas{width:100%!important}
 .legend{background:#fff;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.7;box-shadow:0 1px 4px #0002}
 .err{color:#b42318;font-size:12px}
 </style></head><body>
-<header><h1>해양 바람·파랑 관측 대시보드</h1><span class="meta" id="meta">불러오는 중…</span><span class="sp"></span>
+<header><h1>기상 데이터(바람·파랑) 관측 대시보드</h1><span class="meta" id="meta">불러오는 중…</span><span class="sp"></span>
 <button onclick="map.setView([36,127.8],7)">전국</button>
 <button onclick="refresh(true)">새로고침</button></header>
 <main><div id="map"></div><aside>
