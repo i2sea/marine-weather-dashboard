@@ -219,13 +219,22 @@ async function ldl(){const box=document.getElementById('ljob'),key=getKey(box);i
  else{for(let y=a.getFullYear(),mo=a.getMonth()+1;y<b.getFullYear()||(y==b.getFullYear()&&mo<=b.getMonth()+1);mo==12?(y++,mo=1):mo++){const yy=y,mm=mo;
    tasks.push({lab:`${yy}-${String(mm).padStart(2,'0')}`,fn:async()=>parseDaily(await relay('typ02/openApi/SeaMtlyInfoService/'+m.op,{pageNo:'1',numOfRows:'99',dataType:'JSON',year:String(yy),month:String(mm).padStart(2,'0'),station:st.stn},key),yy,mm)});}}
  const jk=`${st.stn}|${st.tp}|${f2(a)}|${f2(b).slice(0,8)}`;if(LDONE.key!=jk)LDONE={key:jk,parts:{}};
- const fails=[],reused=Object.keys(LDONE.parts).length;
- const run=tasks.map(T=>async()=>{if(LDONE.parts[T.lab])return LDONE.parts[T.lab];
+ const fails=[],reused=Object.keys(LDONE.parts).length;let skipped=null;
+ // 자료 시작 찾기: 첫 구간이 비어 있으면 이분 탐색(약 10번 요청)으로 자료가 처음 나오는 구간을 찾고 그 앞은 건너뜀
+ const probe=async()=>{if(tasks.length<9||reused)return;
+  box.innerHTML='<div class="sub">이 지점 자료가 시작되는 날짜를 찾는 중…</div>';
+  const has=async i=>{const T=tasks[i];try{const r=await retry(T.fn);LDONE.parts[T.lab]=r;return r.length>0;}catch(e){if(AUTHERR.test(e.message)||e.message=='취소했습니다')throw e;return null;}};
+  if(await has(0)!==false)return;
+  const n=tasks.length;let lo=0,hi=-1;
+  for(let k=1;k<=8;k++){const i=k==8?n-1:Math.floor(n*k/8);if(i<=lo)continue;if(await has(i)!==false){hi=i;break;}lo=i;}
+  if(hi<0)return;
+  while(hi-lo>1){const mid=(lo+hi)>>1;if(await has(mid)!==false)hi=mid;else lo=mid;}
+  if(hi>0){skipped={n:hi,from:tasks[hi].lab.slice(0,8)};tasks=tasks.slice(hi);}};
+ const mk=()=>tasks.map(T=>async()=>{if(LDONE.parts[T.lab])return LDONE.parts[T.lab];
    try{const r=await retry(T.fn);LDONE.parts[T.lab]=r;return r;}catch(e){if(AUTHERR.test(e.message)||e.message=='취소했습니다')throw e;fails.push(T.lab);return [];}});
  const show=d=>{const p=Math.floor(d*100/tasks.length),el=(Date.now()-t0)/1000,rem=d?el*(tasks.length-d)/d:0;
   box.innerHTML=`<div class="sub">${st.name} 받는 중 ${p}% (${d}/${tasks.length})${fails.length?` · <span class="err">실패 ${fails.length}구간(건너뜀)</span>`:''}${reused?` · 이어받기 ${reused}구간`:''}${rem>3?` · 남은 시간 약 ${rem<90?Math.round(rem)+'초':Math.round(rem/60)+'분'}`:''}</div><div class="bar"><i style="width:${p}%"></i></div>`;};
- show(0);
- try{const parts=await pool(run,4,show);let rows=[].concat(...parts);let cols,head;
+ try{await probe();show(0);const parts=await pool(mk(),4,show);let rows=[].concat(...parts);let cols,head;
   if(st.tp=='B'){const lo=f2(a),hi=f2(b);rows=rows.filter(r=>r.TM>=lo&&r.TM<=hi);const seen=new Set();rows=rows.filter(r=>!seen.has(r.TM)&&seen.add(r.TM));rows.sort((x,y)=>x.TM<y.TM?-1:1);
    cols=BCOLS.filter(c=>c=='TM'||c=='STN'||rows.some(r=>r[c]!==''));head=c=>BHEAD[c]||c;}
   else{const lo=iso(a),hi=iso(b);rows=rows.filter(r=>r.date>=lo&&r.date<=hi);rows.sort((x,y)=>x.date<y.date?-1:1);
@@ -234,11 +243,12 @@ async function ldl(){const box=document.getElementById('ljob'),key=getKey(box);i
   if(!rows.length)throw new Error('받은 자료가 없습니다 (이 기간에 관측이 없거나 지점 자료가 제공되지 않습니다)');
   const z=zOf(st),wk=st.tp=='B'?'WS1':'ws',hc=HUB.on&&z&&cols.includes(wk);
   const csv='\ufeff'+['지점명,'+cols.map(head).join(',')+(hc?','+hubLabel(z,st):'')].concat(rows.map(r=>`${st.name},`+cols.map(c=>r[c]??'').join(',')+(hc?','+(conv(r[wk],z)??''):''))).join('\r\n');
-  const fn=`${st.name}_${st.stn}_${st.tp=='B'?'30분':'일'}_${iso(a).replace(/-/g,'')}-${iso(b).replace(/-/g,'')}.csv`;
+  const r0=st.tp=='B'?String(rows[0].TM).slice(0,8):rows[0].date.replace(/-/g,''),r1=st.tp=='B'?String(rows[rows.length-1].TM).slice(0,8):rows[rows.length-1].date.replace(/-/g,'');
+  const fn=`${st.name}_${st.stn}_${st.tp=='B'?'30분':'일'}_${r0}-${r1}.csv`,fd=x=>`${x.slice(0,4)}-${x.slice(4,6)}-${x.slice(6,8)}`;
   const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),el=document.createElement('a');el.href=u;el.download=fn;el.click();
   if(st.tp=='B')dsFromBuoy(st,rows,a,b);else dsFromDaily(st,rows,a,b);
   fails.sort();if(!fails.length)LDONE={key:'',parts:{}};
-  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div>${fails.length?`<div class="err" style="margin-top:4px">받지 못한 구간 ${fails.length}개: ${fails.slice(0,6).join(', ')}${fails.length>6?' …':''}<br>‘CSV 받기’를 다시 누르면 받은 구간은 그대로 두고 이 구간만 다시 받습니다.</div>`:''}<button class="btn" style="margin-top:4px" onclick="DSEL=DSL[DSL.length-1].id;openAnalysis()">📊 받은 자료 분석하기</button>`;}
+  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div><div class="sub">받은 자료 기간: <b>${fd(r0)} ~ ${fd(r1)}</b>${r0>iso(a).replace(/-/g,'')?` · 요청 시작일(${iso(a)}) 이전에는 이 지점 관측 자료가 없습니다${skipped?` (앞쪽 ${skipped.n}구간은 확인 후 건너뜀)`:''}`:''}</div>${fails.length?`<div class="err" style="margin-top:4px">받지 못한 구간 ${fails.length}개: ${fails.slice(0,6).join(', ')}${fails.length>6?' …':''}<br>‘CSV 받기’를 다시 누르면 받은 구간은 그대로 두고 이 구간만 다시 받습니다.</div>`:''}<button class="btn" style="margin-top:4px" onclick="DSEL=DSL[DSL.length-1].id;openAnalysis()">📊 받은 자료 분석하기</button>`;}
  catch(e){const k=Object.keys(LDONE.parts).length;box.innerHTML=`<span class="err">${e.message}</span>${k&&!AUTHERR.test(e.message)?`<div class="sub">받은 ${k}구간은 기억해 두었습니다 — 다시 누르면 이어서 받습니다.</div>`:''}`;}
  finally{JOB=null;}}
 function dlBox(){return `<div class="box"><h3>자료 내려받기 (CSV)</h3>${PRESETS.map((p,i)=>`<button class="preset" data-i="${i}" onclick="preset(${i})"><b>${p.n}</b>${p.t?`<span class="tag">${p.t}</span>`:''}<small>${p.m}</small></button>`).join('')}
@@ -317,7 +327,7 @@ async function rwDl(lat,lon){const box=document.getElementById('rwjob'),key=getK
   const u=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),el=document.createElement('a');el.href=u;el.download=fn;el.click();
   dsFromRawm(lat,lon,hs,itv,rows);
   fails.sort();if(!fails.length)LDONE={key:'',parts:{}};
-  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div>${fails.length?`<div class="err" style="margin-top:4px">받지 못한 구간 ${fails.length}개: ${fails.slice(0,6).join(', ')}${fails.length>6?' …':''}<br>‘CSV 받기’를 다시 누르면 받은 구간은 그대로 두고 이 구간만 다시 받습니다.</div>`:''}<button class="btn" style="margin-top:4px" onclick="DSEL=DSL[DSL.length-1].id;openAnalysis()">📊 받은 자료 분석하기</button>`;}
+  box.innerHTML=`<div class="sub">완료: ${rows.length.toLocaleString()}행 · ${fn}</div><div class="sub">받은 자료 기간: <b>${fd(r0)} ~ ${fd(r1)}</b>${r0>iso(a).replace(/-/g,'')?` · 요청 시작일(${iso(a)}) 이전에는 이 지점 관측 자료가 없습니다${skipped?` (앞쪽 ${skipped.n}구간은 확인 후 건너뜀)`:''}`:''}</div>${fails.length?`<div class="err" style="margin-top:4px">받지 못한 구간 ${fails.length}개: ${fails.slice(0,6).join(', ')}${fails.length>6?' …':''}<br>‘CSV 받기’를 다시 누르면 받은 구간은 그대로 두고 이 구간만 다시 받습니다.</div>`:''}<button class="btn" style="margin-top:4px" onclick="DSEL=DSL[DSL.length-1].id;openAnalysis()">📊 받은 자료 분석하기</button>`;}
  catch(e){box.innerHTML=`<span class="err">${e.message}</span>`;}finally{JOB=null;}}
 PANEL0=document.getElementById('panel').innerHTML;
 window.addEventListener('resize',()=>map.invalidateSize());
