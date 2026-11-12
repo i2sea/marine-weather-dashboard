@@ -11,8 +11,8 @@ def g(path, **q):
         t = f"ERR {e}"
     print(f"===== {path} {dict((k, v) for k, v in q.items() if k != 'authKey')}")
     lines = t.splitlines()
-    print("\n".join(lines[:40])); print(f"... total {len(lines)} lines"); print("\n".join(lines[-3:]))
-g("typ01/url/stn_inf.php", inf="SFC", stn="", tm="202611010000", help="1")
+    print("\n".join(l[:400] for l in lines[:40])); print(f"... total {len(lines)} lines"); print("\n".join(lines[-3:]))
+g("typ02/openApi/SfcMtlyInfoService/getSfcStnLstTbl", pageNo="1", numOfRows="200", dataType="JSON", year="2026", month="09")
 g("typ01/url/kma_sfctm2.php", tm="202611120900", stn="0", help="1")
 g("typ01/url/kma_sfctm3.php", tm1="201701010000", tm2="201701010500", stn="159", help="1")
 g("typ01/url/kma_sfctm3.php", tm1="201701010000", tm2="201701312300", stn="159", help="0")
