@@ -1,7 +1,7 @@
 // ===== 기상청 종관기상관측(ASOS) — 육상 지점: 지도·최신 관측·장기 1시간 자료 받기 =====
 // data/asos.json(사이트가 매시간 갱신) + 장기 자료는 이용자 키로 kma_sfctm3.php(한 번에 최대 31일)를 한 달씩
 let ASOS = null, ASEL = null, AJOB_DONE = { key: '', parts: {} };
-const ASCOL = '#7a5af8';
+const ASCOL = '#c11574';   // 육상 지도(초록·노랑)에서 잘 보이는 진한 자홍색
 const asosLayer = L.layerGroup().addTo(map);
 if (!('A' in show)) show.A = true;
 const _filters1 = filters;
@@ -12,10 +12,10 @@ filters = function () { _filters1(); const box = document.getElementById('filter
 const azh = s => (s && s.zh > 0 ? +s.zh : 10);          // 풍속계 높이(일람표), 없으면 표준 10 m
 const azhEst = s => !(s && s.zh > 0);
 function asosIcon(s) {
-  const a = s.wd != null && s.ws > 0 ? `<line x1="0" y1="-12" x2="0" y2="-5" stroke="${ASCOL}" stroke-width="2" transform="rotate(${(s.wd + 180) % 360})"/>` : '';
-  return L.divIcon({ className: '', iconSize: [70, 26], iconAnchor: [13, 13], html: `<div style="display:flex;align-items:center;gap:2px">
-   <svg width="26" height="26" viewBox="-13 -13 26 26">${a}<path d="M0 -5L5 4H-5Z" fill="${ASCOL}" stroke="#fff" stroke-width="1.2"/></svg>
-   <span class="wlab" style="color:${ASCOL}">${s.ws != null ? s.ws.toFixed(1) : ''}</span></div>` });
+  const a = s.wd != null && s.ws > 0 ? `<line x1="0" y1="-17" x2="0" y2="-8" stroke="${ASCOL}" stroke-width="3" stroke-linecap="round" transform="rotate(${(s.wd + 180) % 360})"/>` : '';
+  return L.divIcon({ className: '', iconSize: [80, 36], iconAnchor: [18, 18], html: `<div style="display:flex;align-items:center;gap:2px">
+   <svg width="36" height="36" viewBox="-18 -18 36 36" style="filter:drop-shadow(0 0 1.5px rgba(0,0,0,.55))">${a}<path d="M0 -10L10 8H-10Z" fill="${ASCOL}" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"/></svg>
+   <span class="wlab" style="color:${ASCOL};font-weight:700;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff">${s.ws != null ? s.ws.toFixed(1) : ''}</span></div>` });
 }
 function asosDraw() {
   asosLayer.clearLayers(); if (!ASOS || !show.A) return;
