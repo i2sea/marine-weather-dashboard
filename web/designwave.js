@@ -23,18 +23,34 @@ function dwGridHTML() {
    <div class="sub">받은 곳: ${S.obtained && (S.obtained.url || S.obtained.where) ? `${esc(S.obtained.where || '')} ${S.obtained.url ? `<a href="${esc(S.obtained.url)}" target="_blank">${esc(S.obtained.url)}</a>` : ''}` : '(사이트 관리자 확인 중)'} · 자료표 추출 ${esc(S.extracted || '')}</div>`;
   if (!(la > 0 && lo > 0)) return h + '<div class="sub">사업지 위도·경도를 넣으면(또는 저장된 사업지를 고르면) 가까운 격자점이 여기에 나옵니다.</div></div>';
   const near = DWT.points.map(p => ({ p, d: hav([la, lo], [p.lat, p.lon]), b: bearing([la, lo], [p.lat, p.lon]) })).sort((a, b) => a.d - b.d).slice(0, 6);
+  const R = dwRecommend(near), rec = R.rec, cons = R.cons;
   h += `<div class="sub" style="margin:4px 0">사업지에서 가까운 격자점 — 눌러서 파향별 H0·T1/3 채우기 (등심선 법선 방향 기준으로 해안 쪽으로 오는 파향만)</div>
    <table class="tbl"><tr><th>격자점</th><th>위치</th><th>거리·방위</th><th>해안 쪽 파향 최대 H0</th><th>쪽</th><th></th></tr>
    ${near.map(({ p, d, b }) => { const ok = DWT.dirs.map((dir, i) => ({ dir, H: p.H[i] })).filter(x => reaches(x.dir, I.site.normal)), mx = ok.reduce((a, x) => x.H > a.H ? x : a, { H: 0 });
-     return `<tr${I.deep.grid == p.id ? ' style="background:#d1e9ff"' : ''}><td><b>${p.id}</b></td><td>${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}</td><td>${d.toFixed(1)} km ${DIR16[Math.round(b / 22.5) % 16]}</td><td>${mx.H ? `${mx.H} m (${mx.dir})` : '–'}</td><td>${p.p}</td>
-      <td><button class="btn${I.deep.grid == p.id ? '' : ' pri'}" onclick="dwFillGrid('${p.id}')">${I.deep.grid == p.id ? '다시 채우기' : '채우기'}</button></td></tr>`; }).join('')}</table></div>`;
+     return `<tr${I.deep.grid == p.id ? ' style="background:#d1e9ff"' : ''}><td><b>${p.id}</b>${rec && rec.p === p ? ' <span style="color:#067647;font-weight:700">★추천</span>' : ''}${cons && cons.p === p && cons !== rec ? ' <span style="color:#b54708;font-weight:700">▲보수적</span>' : ''}<br><span class="sub">${p.id.includes('-') ? '내부격자점' : '연안격자점'}</span></td><td>${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}</td><td>${d.toFixed(1)} km ${DIR16[Math.round(b / 22.5) % 16]}</td><td>${mx.H ? `${mx.H} m (${mx.dir})` : '–'}</td><td>${p.p}</td>
+      <td><button class="btn${I.deep.grid == p.id ? '' : ' pri'}" onclick="dwFillGrid('${p.id}')">${I.deep.grid == p.id ? '다시 채우기' : '채우기'}</button></td></tr>`; }).join('')}</table>
+   ${rec ? `<div style="margin-top:6px;line-height:1.65;font-size:12.5px"><b style="color:#067647">★ 추천: ${rec.p.id}</b> — ${R.why}${cons && cons !== rec ? `<br><b style="color:#b54708">▲ 보수적 비교: ${cons.p.id}</b> — 사업지 정면 쪽 가까운 격자점 중 해안 쪽 파향 H0가 가장 큼 (${cons.mx.H} m, ${cons.mx.dir}). 추천 격자점과 두 번 계산해 차이를 확인하세요.` : ''}</div>` : ''}</div>`;
   return h;
+}
+// 격자점 추천: ① 사업지 정면(등심선 법선 ±60°) 외해 쪽 격자점 중 ② 가장 가까운 것.
+// 근거: 보고서 6.1절 — 내부격자점은 천해설계파 도출 시 내부 영역 바람 영향과 기술자 주관 차이를 줄이려고 연안격자점 안쪽(가능한 수심 25 m 이상)에 둔 점.
+function dwRecommend(near) {
+  const I = DWI, hasN = I.site.normal !== '' && isFinite(+I.site.normal), nrm = +I.site.normal;
+  const mxOf = p => DWT.dirs.map((dir, i) => ({ dir, H: p.H[i] })).filter(x => reaches(x.dir, I.site.normal)).reduce((a, x) => x.H > a.H ? x : a, { H: 0, dir: '–' });
+  near.forEach(o => { o.off = hasN ? Math.abs(((o.b - nrm) % 360 + 540) % 360 - 180) : 0; o.mx = mxOf(o.p); });
+  const front = near.filter(o => o.off <= 60), pool = front.length ? front : near, rec = pool[0], cons = pool.slice().sort((a, b) => b.mx.H - a.mx.H)[0];
+  const why = rec ? `${rec.p.id.includes('-') ? '내부격자점' : '연안격자점'}, 사업지에서 ${rec.d.toFixed(1)} km ${DIR16[Math.round(rec.b / 22.5) % 16]}` +
+    (hasN ? (front.length ? ` — 사업지 정면 외해 쪽(등심선 법선 ${nrm}° ±60°)에 있는 격자점 중 가장 가까움.` : ` — 정면(법선 ±60°) 쪽 격자점이 가까이 없어 가장 가까운 점을 추천.`) : ' — 등심선 법선 방향을 넣으면 정면 쪽 격자점을 골라 추천합니다. 지금은 가장 가까운 점.') +
+    ` 보고서 6.1절에 따르면 내부격자점은 천해설계파를 구할 때 내부 영역 바람 영향과 기술자 주관 차이를 줄이려고 연안격자점 안쪽(가능한 수심 25 m 이상)에 둔 점이므로, 사업지 앞 가까운 격자점을 쓰는 것이 취지에 맞습니다.` : '';
+  return { rec, cons, why, basis: rec ? { id: rec.p.id, d: rec.d, b: rec.b, front: front.length > 0, hasN, nrm, consId: cons && cons.p.id, consH: cons && cons.mx.H, consDir: cons && cons.mx.dir } : null };
 }
 function dwFillGrid(id) {
   const p = DWT && DWT.points.find(x => x.id == id); if (!p) return; const S = DWT.src, I = DWI;
   const rows = DWT.dirs.map((dir, i) => ({ dir, H0: p.H[i], T: p.T[i], U: p.U[i], C: p.C[i] })).filter(r => reaches(r.dir, I.site.normal));
   I.deep = { ...I.deep, src: `${S.publisher} 「${S.title}」(${S.date})`, grid: p.id, lat: p.lat, lon: p.lon, R: S.rp, rows, edited: false,
     cite: { publisher: S.publisher, title: S.title, date: S.date, table: S.table, page: p.p, pdf: p.pdf, note: S.note, gridTable: S.gridTable, issuer: S.issuer, obtained: S.obtained || {} } };
+  if (+I.site.lat > 0) { const la = +I.site.lat, lo = +I.site.lon, nr = DWT.points.map(q => ({ p: q, d: hav([la, lo], [q.lat, q.lon]), b: bearing([la, lo], [q.lat, q.lon]) })).sort((a, b) => a.d - b.d).slice(0, 6);
+    I.deep.rec = dwRecommend(nr).basis; }
   dwSave(); dwForm(); dwRun();
 }
 
@@ -225,6 +241,9 @@ function dwReport(X) {
   // 3. 심해설계파
   const ct = I.deep.cite, gd = ct && S.lat !== '' && I.deep.lat !== '' ? hav([+S.lat, +S.lon], [+I.deep.lat, +I.deep.lon]) : null;
   s += `<h2 class="pb">3. 심해설계파</h2>${ct ? `<p>${esc(ct.publisher)}(${esc(ct.date)}) 「${esc(ct.title)}」의 ${esc(ct.table)}에서 사업지에 가까운 격자점 <b>${esc(I.deep.grid)}</b>(${ff(I.deep.lat, 3)}°N, ${ff(I.deep.lon, 3)}°E${gd != null ? `, 사업지에서 ${ff(gd, 1)} km` : ''})의 ${I.deep.R}년 빈도 값을 쓴다. ${esc(ct.note || '')}</p>
+    ${I.deep.rec ? `<p><b>격자점 선정:</b> ${I.deep.rec.id === I.deep.grid
+      ? `${esc(I.deep.grid)}는 ${I.deep.rec.hasN && I.deep.rec.front ? `사업지 정면 외해 쪽(등심선 법선 ${I.deep.rec.nrm}° ±60°)에 있는 격자점 중 가장 가깝다(${ff(I.deep.rec.d, 1)} km ${DIR16[Math.round(I.deep.rec.b / 22.5) % 16]}).` : `사업지에서 가장 가까운 격자점이다(${ff(I.deep.rec.d, 1)} km).`} 같은 보고서 6.1절은 내부격자점을 천해설계파 도출 시 내부 영역 바람 영향과 기술자 주관에 따른 차이를 줄이기 위해 연안격자점 안쪽(가능한 수심 25 m 이상)에 선정하였다고 밝히고 있어, 사업지 앞 가장 가까운 격자점을 쓰는 것이 그 취지에 맞는다.${I.deep.rec.consId && I.deep.rec.consId !== I.deep.grid ? ` 참고로 정면 쪽 가까운 격자점 중 해안 쪽 파향 H<sub>0</sub>가 가장 큰 격자점은 ${esc(I.deep.rec.consId)}(${I.deep.rec.consH} m, ${I.deep.rec.consDir})이다.` : ''}`
+      : `작성자가 ${esc(I.deep.grid)}를 선택하였다 (자동 추천 격자점은 ${esc(I.deep.rec.id)}).`}</p>` : ''}
     <div class="note">출처: ${esc(ct.publisher)}, 「${esc(ct.title)}」, ${esc(ct.date)}, ${esc(ct.table)}, ${esc(ct.page)}쪽 (PDF ${ct.pdf}쪽). 격자점 위치: 같은 보고서 ${esc(ct.gridTable || '')}.${I.deep.edited ? ' <span class="wrn">※ 보고서 값을 불러온 뒤 일부 값을 직접 고쳤음</span>' : ''}${+I.deep.R !== 50 ? ' <span class="wrn">※ 내장 자료는 50년 빈도 값이다</span>' : ''}</div>` : `<p>${esc(I.deep.src)}의 격자점 값을 쓴다.</p>`}
    ${T(3, '심해설계파 (격자점 값)')}<table><tr><th>격자점</th><th>위치</th><th>재현기간</th><th>파향</th><th>H<sub>0</sub> (m)</th><th>T<sub>1/3</sub> (s)</th>${ct ? '<th>결정 원인</th><th>해상풍 (m/s)</th>' : ''}<th>심해 파장 L<sub>0</sub> (m)</th><th>파형경사 H<sub>0</sub>/L<sub>0</sub></th></tr>
    ${X.rows.map(r => `<tr><td>${esc(I.deep.grid || '–')}</td><td>${I.deep.lat !== '' ? `${ff(I.deep.lat, 3)}°N, ${ff(I.deep.lon, 3)}°E` : '–'}</td><td>${R}년</td><td>${r.dir} (${dirDeg(r.dir)}°)</td><td>${ff(r.H0)}</td><td>${ff(r.T, 1)}</td>${ct ? `<td>${r.C == 'T' ? '태풍' : r.C == 'E' ? '비태풍' : '–'}</td><td>${r.U != null ? ff(r.U, 1) : '–'}</td>` : ''}<td>${ff(DWE.L0(r.T), 1)}</td><td>${ff(r.H0 / DWE.L0(r.T), 4)}</td></tr>`).join('') || '<tr><td colspan="10">입력 없음</td></tr>'}</table>
