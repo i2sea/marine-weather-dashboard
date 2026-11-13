@@ -175,6 +175,11 @@ def main():
         currents.build(out_data)
     except Exception as e:  # noqa: BLE001
         print("조류예보 단계 건너뜀:", e)
+    try:  # 국립해양조사원 조위(최극조위·해일 편차) — 설계조위 산정용
+        import tides
+        tides.build(out_data)
+    except Exception as e:  # noqa: BLE001
+        print("조위 단계 건너뜀:", e)
     import hashlib, re
     web = os.path.join(ROOT, "web")
     for fn in os.listdir(web):  # index.html, analysis.js 등 화면 파일
