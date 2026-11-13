@@ -4,15 +4,20 @@ const DIR16 = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW
 const dirDeg = s => DIR16.indexOf(s) * 22.5;
 const DW_DEF = () => ({
   title: '설계파 산정 보고서', reportNo: '', author: '', date: iso(new Date()),
-  site: { name: '', lat: '', lon: '', h: 30, tan: 0.02, normal: 135, tide: '설계조위(약최고고조위 + 폭풍해일고) 기준' },
+  site: { name: '', lat: '', lon: '', dl: '', h: 30, tan: 0.02, normal: 135, tide: '설계조위(약최고고조위 + 폭풍해일고) 기준' },
+  tide: { stn: '', ahhw: '', msl: '', surge: '', slr: 0 },
   deep: { src: '해양수산부 「전국 심해설계파 산출 보고서」', grid: '', lat: '', lon: '', R: 50, rows: [{ dir: 'SSE', H0: '', T: '' }] },
   obs: { ds: '', u: '', sep: 48, depth: '', method: 'auto' }
 });
-let DWI = (() => { try { const o = JSON.parse(localStorage.getItem('dwInput') || 'null'); if (o && o.site && o.deep) { const D = DW_DEF(); return { ...D, ...o, site: { ...D.site, ...o.site }, deep: { ...D.deep, ...o.deep }, obs: { ...D.obs, ...o.obs } }; } } catch (e) { } return DW_DEF(); })();
+let DWI = (() => { try { const o = JSON.parse(localStorage.getItem('dwInput') || 'null'); if (o && o.site && o.deep) { const D = DW_DEF(); return { ...D, ...o, site: { ...D.site, ...o.site }, deep: { ...D.deep, ...o.deep }, obs: { ...D.obs, ...o.obs }, tide: { ...D.tide, ...(o.tide || {}) } }; } } catch (e) { } return DW_DEF(); })();
 const dwSave = () => { try { localStorage.setItem('dwInput', JSON.stringify(DWI)); } catch (e) { } };
 let DWR = null;   // 마지막 계산 결과
 let DWT = null;   // 심해설계파 자료표 (deepwave/deepwave.json — 해양수산부 보고서 표에서 추출, 사이트 관리자가 교체)
 fetch('deepwave/deepwave.json?d=' + iso(new Date())).then(r => r.ok ? r.json() : null).then(j => { if (j && j.points) { DWT = j; if (document.getElementById('dwfrm')) dwForm(); } }).catch(() => { });
+let TID = null;   // 조위관측소 연최고 고조위·연최대 해일 편차 (data/tides.json — 국립해양조사원, 매시간 갱신)
+fetch('data/tides.json?d=' + iso(new Date())).then(r => r.ok ? r.json() : null).then(j => { if (j && j.stations) { TID = j; if (document.getElementById('dwfrm')) { dwForm(); dwRun(); } } }).catch(() => { });
+let THC = null;   // 기준항 조화상수 (tide/harmonic.json — 국립해양조사원 CSV에서 변환, 사이트 관리자가 교체)
+fetch('tide/harmonic.json?d=' + iso(new Date())).then(r => r.ok ? r.json() : null).then(j => { if (j && j.stations) { THC = j; if (document.getElementById('dwfrm')) { dwForm(); dwRun(); } } }).catch(() => { });
 const bearing = (a, b) => { const p1 = a[0] * Math.PI / 180, p2 = b[0] * Math.PI / 180, dl = (b[1] - a[1]) * Math.PI / 180;
   return (Math.atan2(Math.sin(dl) * Math.cos(p2), Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl)) * 180 / Math.PI + 360) % 360; };
 const reaches = (dir, nrm) => !(nrm !== '' && isFinite(+nrm)) || Math.abs(((dirDeg(dir) - +nrm) % 360 + 540) % 360 - 180) < 90;
@@ -100,8 +105,11 @@ function dwForm() {
    <h3>사업지 (현장)</h3>
    <div class="g"><label class="wide">저장된 사업지에서 고르기 (📐 사업지에 그려 둔 경계 — 이름과 중심 좌표를 채움)<select onchange="dwPickArea(this.value)"><option value="">${AREAS.length ? '— 고르세요 —' : '저장된 사업지 없음 (제목줄 📐 사업지에서 그리기)'}</option>${AREAS.map((a, i) => `<option value="${i}" ${I.site.area === a.name ? 'selected' : ''}>${esc(a.name)} (중심 ${areaCenter(a).map(v => v.toFixed(4)).join(', ')})</option>`).join('')}</select></label></div>
    <div class="g">${inp('site.name', '지점 이름', 'text')}${inp('site.lat', '위도 (°)')}${inp('site.lon', '경도 (°)')}
-    ${inp('site.h', '수심 h (설계조위 기준, m)')}${inp('site.tan', '해저 경사 tanθ (예 0.02 = 1/50)')}${inp('site.normal', '등심선 법선 방향 (외해 쪽, °)')}
-    ${inp('site.tide', '수심 기준 설명', 'text', 'any', ' class="wide"')}</div>
+    ${inp('site.dl', '해도 수심 (기본수준면 기준, m)')}${inp('site.tan', '해저 경사 tanθ (예 0.02 = 1/50)')}${inp('site.normal', '등심선 법선 방향 (외해 쪽, °)')}
+    ${+I.site.dl > 0 ? '' : inp('site.h', '수심 h 직접 입력 (해도 수심을 비웠을 때만, m)')}</div>
+   <div class="note sub">해도 수심을 넣으면 설계조위(약최고고조위 + 폭풍해일고)·평균해면·약최저저조위를 아래 조위관측소 자료로 계산해 수위별 수심을 정하고, 수위마다 설계파를 따로 구합니다.</div>
+   <h3>설계조위 (국립해양조사원 조위관측소 자료로 계산)</h3>${dwTideHTML(dwTide(+DWI.deep.R || 50))}
+   <div class="g">${inp('tide.ahhw', '약최고고조위 직접 입력 (m, 비우면 자동)')}${inp('tide.surge', '폭풍해일고 직접 입력 (m, 비우면 자동)')}${inp('tide.msl', '평균해면 직접 입력 (m, 비우면 자동)')}${inp('tide.slr', '해수면 상승 여유 (m, 기본 0)')}</div>
    <div class="note sub">등심선 법선 방향: 등심선에 수직이면서 외해(먼바다)를 향하는 방위각입니다. 이 방향에서 오는 파는 정면 입사(입사각 0°)로 봅니다. 예: 해안선이 동–서로 놓이고 바다가 남쪽이면 180°.</div>
    <h3>심해설계파 (해양수산부 보고서 격자점 값)</h3>${dwGridHTML()}<div class="g">${inp('deep.src', '출처 보고서', 'text', 'any', ' class="wide"')}${inp('deep.grid', '격자점 번호', 'text')}${inp('deep.lat', '격자점 위도 (°)')}${inp('deep.lon', '격자점 경도 (°)')}${inp('deep.R', '재현기간 (년)', 'number', '1')}</div>
    <table class="tbl" style="margin-top:6px"><tr><th>파향 (16방위)</th><th>심해 유의파고 H0 (m)</th><th>유의파 주기 T1/3 (s)</th><th></th></tr>
@@ -117,6 +125,46 @@ function dwForm() {
 }
 function dwPickArea(i) { const a = AREAS[+i]; if (i === '' || !a) return; const c = areaCenter(a);
   Object.assign(DWI.site, { area: a.name, name: a.name, lat: +c[0].toFixed(5), lon: +c[1].toFixed(5) }); dwSave(); dwForm(); dwRun(); }
+// ---------- 설계조위 ----------
+// 연최대 해일 편차(실측 고조 − 예측 고조)·연최고 고조위: 자료가 9·10개월 이상인 해만 씀
+function dwTideList() {
+  const la = +DWI.site.lat, lo = +DWI.site.lon; if (!TID || !(la > 0 && lo > 0)) return [];
+  return TID.stations.map(s => ({ s, d: hav([la, lo], [s.lat, s.lon]), b: bearing([la, lo], [s.lat, s.lon]),
+    nS: s.sg.filter(r => r[2] >= 9 && r[1] != null).length, nH: s.hw.filter(r => r[2] >= 10 && r[1] != null).length })).sort((a, b) => a.d - b.d);
+}
+function dwTide(R) {
+  const I = DWI, T = I.tide, L = dwTideList(); if (!L.length) return null;
+  const pick = (T.stn && L.find(o => o.s.code == T.stn)) || L.slice(0, 6).find(o => o.nS >= 5) || L[0], st = pick.s, nb = v => v === '' || v == null || !isFinite(+v) ? null : +v;
+  const sgY = st.sg.filter(r => r[2] >= 9 && r[1] != null), hwY = st.hw.filter(r => r[2] >= 10 && r[1] != null);
+  const Fs = sgY.length >= 5 ? DWE.fit(sgY.map(r => r[1] / 100), 1, 'gumbel') : null, Fh = hwY.length >= 5 ? DWE.fit(hwY.map(r => r[1] / 100), 1, 'gumbel') : null;
+  const CIs = Fs ? DWE.boot(sgY.map(r => r[1] / 100), 1, x => DWE.fit(x, 1, 'gumbel'), [R], 300)[0] : null;
+  // 조화상수: 가장 가까운 기준항 (30 km 이내) — 약최고고조위 = Z0 + (H_M2 + H_S2 + H_K1 + H_O1), Z0 = 평균해면(기본수준면 위)
+  let hc = null; if (THC) { const c = THC.stations.map(h => ({ h, d: hav([st.lat, st.lon], [h.lat, h.lon]) })).sort((a, b) => a.d - b.d)[0]; if (c && c.d < 30) hc = c; }
+  const full = st.sg.filter(r => r[8] >= 12 && r[4] != null), avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  let ahhw, ahhwSrc, msl, mslSrc;
+  if (hc) { const H = hc.h, S4 = H.M2[0] + H.S2[0] + H.K1[0] + H.O1[0]; ahhw = (H.Z0 + S4) / 100; msl = H.Z0 / 100; ahhwSrc = `조화상수 (${H.name}): Z0 + H_M2 + H_S2 + H_K1 + H_O1 = ${H.Z0} + ${H.M2[0]} + ${H.S2[0]} + ${H.K1[0]} + ${H.O1[0]} = ${(H.Z0 + S4).toFixed(1)} cm`; mslSrc = `조화상수 (${H.name}) Z0 = ${H.Z0} cm`; }
+  else if (full.length) { ahhw = avg(full.map(r => r[4])) / 100; msl = avg(full.map(r => (r[6] + r[7]) / 2)) / 100; ahhwSrc = `예측 조위 연최고 고조의 평균 (${full.length}년) — 조화상수 자료가 없어 근사`; mslSrc = `예측 고조 평균과 저조 평균의 중간 (평균조위) — 근사`; }
+  const o = { st, pick, L, sgY, hwY, Fs, Fh, CIs, hc, full, approx: !hc };
+  o.ahhw = nb(T.ahhw) ?? ahhw; o.ahhwSrc = nb(T.ahhw) != null ? '직접 입력' : ahhwSrc;
+  o.msl = nb(T.msl) ?? msl; o.mslSrc = nb(T.msl) != null ? '직접 입력' : mslSrc;
+  o.surge = nb(T.surge) ?? (Fs ? Fs.xR(R) : null); o.surgeSrc = nb(T.surge) != null ? '직접 입력' : Fs ? `연최대 해일 편차 ${sgY.length}년 검벨 분포 ${R}년 값` : null;
+  o.slr = +T.slr || 0;
+  o.hwl = o.ahhw != null && o.surge != null ? o.ahhw + o.surge + o.slr : null; o.lwl = 0; o.hwR = Fh ? Fh.xR(R) : null;
+  return o;
+}
+function dwTideHTML(td) {
+  if (!TID) return '<div class="sub">조위 자료(data/tides.json)를 불러오는 중이거나 아직 없습니다.</div>';
+  const L = dwTideList(); if (!L.length) return '<div class="sub">사업지 위도·경도를 넣으면 가까운 조위관측소가 나옵니다.</div>';
+  const sel = td && td.st.code;
+  return `<div style="background:#f4f3ff;border:1px solid #d9d6fe;border-radius:8px;padding:8px 10px;margin:6px 0">
+   <div style="font-size:12.5px;line-height:1.65"><b style="color:#5925dc">🌊 조위관측소 (국립해양조사원)</b> — 해일 편차 자료가 5년 이상인 가장 가까운 관측소를 자동으로 씁니다. 다른 곳을 쓰려면 '이 관측소 쓰기'를 누르세요.${TID.built ? ` <span class="sub">자료 갱신 ${esc(TID.built)}</span>` : ''}</div>
+   <table class="tbl" style="margin-top:4px"><tr><th>조위관측소</th><th>거리·방위</th><th>해일 편차 (완전한 해)</th><th>연최고 고조위 (완전한 해)</th><th></th></tr>
+   ${L.slice(0, 5).map(o => `<tr${o.s.code == sel ? ' style="background:#ebe9fe"' : ''}><td><b>${esc(o.s.name)}</b> ${o.s.code}${o.s.code == sel ? ' <span style="color:#5925dc;font-weight:700">★</span>' : ''}</td><td>${o.d.toFixed(1)} km ${DIR16[Math.round(o.b / 22.5) % 16]}</td>
+     <td>${o.nS}년${o.nS < 5 ? ' <span style="color:#b42318">(부족)</span>' : ''}</td><td>${o.nH}년</td><td><button class="btn${o.s.code == sel ? '' : ' pri'}" onclick="DWI.tide.stn='${o.s.code}';dwSave();dwForm();dwRun()">${o.s.code == sel ? '사용 중' : '이 관측소 쓰기'}</button></td></tr>`).join('')}</table>
+   ${DWI.tide.stn ? `<button class="btn" onclick="DWI.tide.stn='';dwSave();dwForm();dwRun()">자동 선택으로 되돌리기</button>` : ''}
+   <div class="sub" style="margin-top:4px">해일 편차는 공공데이터포털에서 매시간 조금씩 받아 쌓는 중이라(최근 달부터) 처음 며칠은 연수가 적게 나올 수 있습니다.${THC ? '' : ' 기준항 조화상수 자료가 아직 내장되지 않아 약최고고조위는 예측 조위로 근사합니다.'}</div>
+   ${td ? `<div style="font-size:12.5px;margin-top:4px">계산값 — 약최고고조위 <b>${td.ahhw != null ? td.ahhw.toFixed(2) + ' m' : '–'}</b> · 폭풍해일고(${DWI.deep.R || 50}년) <b>${td.surge != null ? td.surge.toFixed(2) + ' m' : '–'}</b> · 설계고조위 <b>${td.hwl != null ? td.hwl.toFixed(2) + ' m' : '–'}</b> · 평균해면 <b>${td.msl != null ? td.msl.toFixed(2) + ' m' : '–'}</b> (기본수준면 기준)</div>` : ''}</div>`;
+}
 // 관측소 추천: 30분 장기 자료가 있는 해양기상부이(B) 중 사업지에서 가까운 순
 function dwObsRecHTML() {
   if (typeof DATA === 'undefined' || !DATA) return '';
@@ -139,7 +187,7 @@ function dwGetBuoy(stn) {   // 보고서를 닫고 그 부이의 장기 받기(1
   const x = DATA.stations.find(s => s.stn == stn); if (!x) return; const el = document.getElementById('dwr'); if (el) el.remove();
   select(x); setTimeout(() => { if (typeof lpreset === 'function') lpreset(2); const b = document.getElementById('l1'); if (b) b.scrollIntoView({ block: 'center' }); }, 300);
 }
-function dwSet(path, v, type) { const ks = path.split('.'), last = ks.pop(), o = ks.reduce((a, k) => a[k], DWI); o[last] = type == 'number' ? (v === '' ? '' : +v) : v; if (path == 'deep.R' || path == 'deep.grid') DWI.deep.edited = true; dwSave(); if (/^site\.(lat|lon|normal)$/.test(path)) dwForm(); dwRun(); }
+function dwSet(path, v, type) { const ks = path.split('.'), last = ks.pop(), o = ks.reduce((a, k) => a[k], DWI); o[last] = type == 'number' ? (v === '' ? '' : +v) : v; if (path == 'deep.R' || path == 'deep.grid') DWI.deep.edited = true; dwSave(); if (/^site\.(lat|lon|normal|dl)$/.test(path)) { dwRun(); dwForm(); } else dwRun(); }
 
 // ---------- 계산 ----------
 function dwObs(d) {
@@ -167,15 +215,22 @@ function dwTidy(html) {
     .replace(/(\d) (m\/s|km|m|s|°|년|개월|개|회|시간|쪽)(?=[\s,.)\]·~<]|$)/g, '$1\u00a0$2')
     .replace(/(\d)( ?)(~|×|−|\+)( ?)(\d)/g, (q, a, s1, o, s2, b) => a + (s1 && '\u00a0') + o + (s2 && '\u00a0') + b)
     .replace(/(\d%?) (구간|모수|파향)/g, '$1\u00a0$2').replace(/(와이블|검벨) (\d)/g, '$1\u00a0$2')
-    .replace(/([A-Za-z0-9가-힣])_(?=[A-Za-z0-9가-힣])/g, '$1_\u200b') + '<');
+    .replace(/[A-Za-z0-9가-힣_.\-]{18,}/g, w => w.replace(/_(?=.)/g, '_\u200b')) + '<');  // 긴 이름만
 }
 function dwRun() {
-  const I = DWI, S = I.site, h = +S.h, tan = +S.tan, nrm = +S.normal, R = +I.deep.R || 50;
+  const I = DWI, S = I.site, tan = +S.tan, nrm = +S.normal, R = +I.deep.R || 50, dl = +S.dl;
   const rows = I.deep.rows.map(r => ({ ...r, H0: +r.H0, T: +r.T })).filter(r => r.H0 > 0 && r.T > 0);
-  const tr = h > 0 ? rows.map(r => ({ r, x: DWE.transform({ H0: r.H0, T: r.T, h, tan, dirFrom: dirDeg(r.dir), normalOff: nrm }) })) : [];
-  const ok = tr.filter(o => o.x.reach), gov = ok.length ? ok.reduce((a, b) => b.x.Hmax > a.x.Hmax ? b : a) : null;
+  const calc = h => { const tr = h > 0 ? rows.map(r => ({ r, x: DWE.transform({ H0: r.H0, T: r.T, h, tan, dirFrom: dirDeg(r.dir), normalOff: nrm }) })) : [];
+    const ok = tr.filter(o => o.x.reach); return { h, tr, gov: ok.length ? ok.reduce((a, b) => b.x.Hmax > a.x.Hmax ? b : a) : null }; };
+  const td = dl > 0 ? dwTide(R) : null;
+  let cases = null, main;
+  if (dl > 0 && td && td.hwl != null) {
+    cases = [['설계고조위 (H.W.L.)', td.hwl], ['평균해면 (M.S.L.)', td.msl], ['약최저저조위 (L.W.L.)', 0]].filter(c => c[1] != null).map(([nm, lv]) => ({ nm, lv, ...calc(dl + lv) }));
+    main = cases.filter(c => c.gov).reduce((a, b) => !a || b.gov.x.Hmax > a.gov.x.Hmax ? b : a, null) || cases[0];
+  } else main = calc(dl > 0 ? dl : +S.h);
+  const { h, tr, gov } = main;
   const d = DSL.find(x => x.id == I.obs.ds), obs = d ? dwObs(d) : null;
-  DWR = { I, h, tan, nrm, R, rows, tr, gov, obs };
+  DWR = { I, h, tan, nrm, R, rows, tr, gov, obs, td, cases, main, dl };
   document.getElementById('dwdoc').innerHTML = dwTidy(dwReport(DWR));
 }
 
@@ -211,7 +266,7 @@ function dwReport(X) {
   const T = (ch, cap) => `<div class="cap">표 ${ch}-${++tn[ch]} ${cap}</div>`, Fg = (ch, cap) => `<div class="capf">그림 ${ch}-${++fn[ch]} ${cap}</div>`;
   const ASM = '<span class="asm">(가정)</span>', dtS = t => { const x = new Date(t); return `${iso(x)} ${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`; };
   const miss = [];
-  if (!(h > 0)) miss.push('현장 수심'); if (!(tan > 0)) miss.push('해저 경사'); if (!(S.normal !== '' && isFinite(nrm))) miss.push('등심선 법선 방향'); if (!X.rows.length) miss.push('심해설계파(H0·T1/3)');
+  if (!(h > 0)) miss.push('현장 수심'); if (X.dl > 0 && !X.cases) miss.push('설계조위(조위관측소 자료 부족 — 직접 입력란 사용)'); if (!(tan > 0)) miss.push('해저 경사'); if (!(S.normal !== '' && isFinite(nrm))) miss.push('등심선 법선 방향'); if (!X.rows.length) miss.push('심해설계파(H0·T1/3)');
   let s = `<h1>${esc(I.title)}</h1><div class="cov">${esc(S.name || '(사업지 이름)')}${I.reportNo ? ' · ' + esc(I.reportNo) : ''}<br>${esc(I.date)}${I.author ? ' · ' + esc(I.author) : ''}</div>
    ${miss.length ? `<div class="wrn" style="border:1px solid #fda29b;background:#fef3f2;padding:8px 10px;border-radius:6px">입력이 더 필요합니다: ${miss.join(', ')}</div>` : ''}`;
   // 1. 개요
@@ -223,10 +278,11 @@ function dwReport(X) {
     <li>관측 극치분석: 연최대(AM)·POT(Peaks Over Threshold), 검벨·와이블 분포 최소자승 적합(확률지), 붓스트랩 90% 신뢰구간</li></ul>
    ${T(1, '설계 조건')}<table><tr><th>항목</th><th>값</th><th>비고</th></tr>
     <tr><td>사업지</td><td>${esc(S.name || '–')}</td><td class="l">${S.lat !== '' ? `${ff(S.lat, 4)}°N, ${ff(S.lon, 4)}°E` : ''}${S.area && S.area === S.name ? ' (사업지 경계 중심)' : ''}</td></tr>
-    <tr><td>수심 h</td><td>${ff(h)} m</td><td class="l">${esc(S.tide)}</td></tr>
+    ${X.cases ? `<tr><td>해도 수심</td><td>${ff(X.dl)} m</td><td class="l">기본수준면(약최저저조위) 기준</td></tr><tr><td>산정 수심 h</td><td>${ff(h)} m</td><td class="l">${esc(X.main.nm)} 기준 — 1.3절</td></tr>` : `<tr><td>수심 h</td><td>${ff(h)} m</td><td class="l">${esc(S.tide)}${X.dl > 0 ? '' : ' (직접 입력)'}</td></tr>`}
     <tr><td>해저 경사 tanθ</td><td>${ff(tan, 4)} (1/${tan > 0 ? ff(1 / tan, 0) : '–'})</td><td class="l">현장 주변 평균 경사</td></tr>
     <tr><td>등심선 법선 방향</td><td>${ff(nrm, 1)}°</td><td class="l">외해 쪽 방위각, 이 방향 입사 = 정면 입사</td></tr>
     <tr><td>설계 재현기간</td><td>${R}년</td><td class="l"></td></tr></table>`;
+  if (X.td) s += dwTideSec(X, T, Fg, ff, ASM);
   // 2. 관측 극치분석
   s += `<h2 class="pb">2. 관측 자료 극치분석</h2>`;
   if (!obs) s += `<p class="note">관측 자료를 고르지 않아 이 장은 생략한다. (관측 대시보드에서 부이 장기 자료를 받아 "관측 자료"로 고르면 채워진다)</p>`;
@@ -363,13 +419,16 @@ function dwReport(X) {
     s += `<p>재현기간 ${R}년 심해설계파를 현장 수심 ${ff(h, 1)} m까지 천해 변형하여 아래 설계파를 정한다. 파향별로 계산한 값 중 최대파고가 가장 큰 ${gov.r.dir} 파향을 채택하였다.</p>
      ${T(6, '설계파 (기초 구조물 파랑하중 산정용)')}<table class="res"><tr><th>항목</th><th>기호</th><th>값</th><th>비고</th></tr>
       <tr><td>파향</td><td>–</td><td><b>${gov.r.dir}</b></td><td class="l">${dirDeg(gov.r.dir)}°에서 입사</td></tr>
-      <tr><td>산정 수심</td><td>h</td><td><b>${ff(h)} m</b></td><td class="l">${esc(S.tide)}</td></tr>
+      <tr><td>산정 수심</td><td>h</td><td><b>${ff(h)} m</b></td><td class="l">${X.cases ? `해도 수심 ${ff(X.dl)} m + ${esc(X.main.nm)} ${ff(X.main.lv)} m` : esc(S.tide)}</td></tr>
       <tr><td>유의파고</td><td>H<sub>1/3</sub></td><td><b>${ff(G.Hs)} m</b></td><td class="l">${G.govS}</td></tr>
       <tr><td>최대파고</td><td>H<sub>max</sub></td><td><b>${ff(G.Hmax)} m</b></td><td class="l">${G.govM}</td></tr>
       <tr><td>유의파 주기</td><td>T<sub>1/3</sub></td><td><b>${ff(G.T13)} s</b></td><td class="l">심해와 같음</td></tr>
       <tr><td>최대파 주기</td><td>T<sub>max</sub></td><td><b>${ff(G.Tmax)} s</b></td><td class="l">T<sub>max</sub> ≈ T<sub>1/3</sub> (가정)</td></tr>
       <tr><td>쇄파 한계</td><td>H<sub>b</sub></td><td><b>${ff(G.Hb)} m</b></td><td class="l">고다 쇄파지표</td></tr>
       <tr><td>파봉고 (정수면 위)</td><td>η<sub>c</sub></td><td><b>${ff(G.crest)} m</b></td><td class="l">${G.crestNote}</td></tr></table>
+     ${X.cases ? `${T(6, '수위별 설계파 (같은 심해설계파·파향, 수위만 바꿈)')}<table><tr><th>수위</th><th>조위 (m, DL)</th><th>수심 h (m)</th><th>파향</th><th>H<sub>1/3</sub> (m)</th><th>H<sub>max</sub> (m)</th><th>파봉고 η<sub>c</sub> (m)</th><th>파봉 높이 (m, DL)</th><th>구분</th></tr>
+      ${X.cases.map(c => { const g = c.gov && c.gov.x; return `<tr class="${c === X.main ? 'res' : ''}"><td class="l">${c.nm}${c === X.main ? ' <b>(채택)</b>' : ''}</td><td>${ff(c.lv)}</td><td>${ff(c.h)}</td><td>${c.gov ? c.gov.r.dir : '–'}</td><td><b>${g ? ff(g.Hs) : '–'}</b></td><td><b>${g ? ff(g.Hmax) : '–'}</b></td><td>${g ? ff(g.crest) : '–'}</td><td>${g ? ff(c.lv + g.crest) : '–'}</td><td class="l">${g ? g.zone : ''}</td></tr>`; }).join('')}</table>
+      <div class="note">파랑하중에는 최대파고가 가장 큰 ${esc(X.main.nm)} 경우를 채택한다. 파봉 높이(기본수준면 기준) = 조위 + 파봉고로, 상부 구조물 여유고 검토에 쓴다. 저조위 경우는 세굴·하부 부재 검토 등에 참고한다.</div>` : ''}
      <h3>가정 사항</h3><ul class="note"><li>평행 등심선(스넬 법칙), 대표 주기 규칙파 굴절, 방향 분산 무시</li><li>회절계수 K<sub>d</sub> = 1.0 (차폐 없음)</li><li>선형 천수계수</li><li>T<sub>max</sub> ≈ T<sub>1/3</sub></li>${obs && obs.auto ? '<li>POT 임계값 자동 설정 (연 약 3회)</li>' : ''}${G.crestCap ? '<li>크노이드 영역의 파봉고 0.8·H<sub>max</sub> 상한</li>' : ''}</ul>
      <p class="note">결과 파일(.json)을 기초 설계도구의 "설계파 파일 가져오기"로 넣으면 설계파고 H = H<sub>max</sub> ${ff(G.Hmax)} m, 주기 T = T<sub>max</sub> ${ff(G.Tmax)} s가 채워진다. 본 보고서는 ${esc(S.name || '사업지')} 기초 구조계산서에 첨부한다.</p>`; }
   // 7. 자료 출처
@@ -378,6 +437,8 @@ function dwReport(X) {
     src.push(`<b>심해설계파</b> — ${esc(ct2.issuer || ct2.publisher)}, 「${esc(ct2.title)}」, ${esc(ct2.date)}. ${esc(ct2.table)} (${esc(ct2.page)}쪽, PDF ${ct2.pdf}쪽), 격자점 위치 ${esc(ct2.gridTable || '')}.<br>받은 곳: ${ob.url || ob.where ? `${esc(ob.where || '')} ${esc(ob.url || '')}` : '사이트 관리자가 제공한 보고서 원문(PDF)'} · 관측 대시보드에 내장된 자료표(deepwave.json)에서 불러옴${I.deep.edited ? ' · <span class="wrn">일부 값 직접 수정</span>' : ''}`); }
   else if (X.rows.length) src.push(`<b>심해설계파</b> — ${esc(I.deep.src)} (작성자 직접 입력)`);
   if (obs) { const st = obs.d.stn || {}; src.push(`<b>관측 자료</b> — 기상청 API허브 해양기상부이 자료 (${esc(st.name || obs.d.name)}${st.stn ? ' ' + st.stn : ''}, ${dsSpan(obs.d)}) · https://apihub.kma.go.kr`); }
+  if (X.td) { src.push(`<b>조위</b> — 해양수산부 국립해양조사원, 최극조위(조석성과)·편차계산표(조석성과) (공공데이터포털 15156013·15156011, ${esc(X.td.st.name)} ${X.td.st.code}) · https://www.data.go.kr · 자료 갱신 ${esc(TID.built || '')}`);
+    if (X.td.hc && THC && THC.src) src.push(`<b>조화상수</b> — ${esc(THC.src.title || '')} ${esc(THC.src.note || '')} · ${esc(THC.src.url || '')}`); }
   src.push('<b>설계기준</b> — 국토교통부·해양수산부, 항만 및 어항 설계기준(KDS 64 10 10) · 국가건설기준센터 https://www.kcsc.re.kr');
   src.push('<b>쇄파 산정식</b> — Goda, Y. (2000), Random Seas and Design of Maritime Structures, 2nd ed., World Scientific');
   s += `<h2>7. 자료 출처</h2><ol style="font-size:12.5px;line-height:1.7">${src.map(x => `<li>${x}</li>`).join('')}</ol>
@@ -385,6 +446,26 @@ function dwReport(X) {
   return s;
 }
 
+function dwTideSec(X, T, Fg, ff, ASM) {
+  const t = X.td, R = X.R, st = t.st; let s = `<h3>1.3 설계조위와 산정 수심</h3>
+   <p>조위는 ${esc(st.name)} 조위관측소(${st.code}, 사업지에서 ${t.pick.d.toFixed(1)} km)의 국립해양조사원 자료로 정한다. 모든 조위는 기본수준면(약최저저조위) 기준이다.</p>
+   <div class="eq">설계고조위 H.W.L. = 약최고고조위 + 폭풍해일고(${R}년)${t.slr ? ' + 해수면 상승 여유' : ''} = ${ff(t.ahhw)} + ${ff(t.surge)}${t.slr ? ` + ${ff(t.slr)}` : ''} = <b>${ff(t.hwl)} m</b><br>
+    산정 수심 h = 해도 수심 + 조위 → H.W.L. ${ff(X.dl)} + ${ff(t.hwl)} = ${ff(X.dl + t.hwl)} m${t.msl != null ? ` · M.S.L. ${ff(X.dl)} + ${ff(t.msl)} = ${ff(X.dl + t.msl)} m` : ''} · L.W.L. ${ff(X.dl)} + 0 = ${ff(X.dl)} m</div>
+   ${T(1, '설계조위')}<table><tr><th>항목</th><th>값 (m)</th><th>산정 방법</th></tr>
+    <tr><td>약최고고조위 (A.H.H.W.)</td><td>${ff(t.ahhw)}</td><td class="l">${esc(t.ahhwSrc || '')}${t.approx && t.ahhwSrc !== '직접 입력' ? ` ${ASM}` : ''}</td></tr>
+    <tr><td>폭풍해일고 (${R}년)</td><td>${ff(t.surge)}</td><td class="l">${esc(t.surgeSrc || '')}${t.CIs && t.surgeSrc !== '직접 입력' ? ` (90% 구간 ${ff(t.CIs.lo)}~${ff(t.CIs.hi)})` : ''}</td></tr>
+    ${t.slr ? `<tr><td>해수면 상승 여유</td><td>${ff(t.slr)}</td><td class="l">입력값</td></tr>` : ''}
+    <tr class="res"><td><b>설계고조위 (H.W.L.)</b></td><td><b>${ff(t.hwl)}</b></td><td class="l">약최고고조위 + 폭풍해일고${t.slr ? ' + 해수면 상승 여유' : ''}</td></tr>
+    <tr><td>평균해면 (M.S.L.)</td><td>${ff(t.msl)}</td><td class="l">${esc(t.mslSrc || '')}${t.approx && t.mslSrc !== '직접 입력' ? ` ${ASM}` : ''}</td></tr>
+    <tr><td>약최저저조위 (L.W.L.)</td><td>0.00</td><td class="l">기본수준면</td></tr>
+    ${t.hwR != null ? `<tr><td>(참고) 극치 고조위 ${R}년</td><td>${ff(t.hwR)}</td><td class="l">연최고 고조위 ${t.hwY.length}년 검벨 분포 — 관측 최고 ${ff(Math.max(...t.hwY.map(r => r[1])) / 100)} m (${esc((t.hwY.reduce((a, r) => r[1] > a[1] ? r : a)[3] || '').slice(0, 10))})</td></tr>` : ''}</table>
+   <div class="note">폭풍해일고는 편차계산표의 고조 편차(실측 고조 − 예측 고조)를 해마다 최대값으로 뽑아 검벨 분포(최소자승, Gringorten 도시)로 ${R}년 값을 구했다. 자료가 9개월 이상인 해만 쓴다.${t.hwR != null && t.hwl != null ? ` 설계고조위 ${ff(t.hwl)} m와 극치 고조위 ${ff(t.hwR)} m의 차이는 해일 최대와 대조 고조가 늘 겹치지는 않기 때문이며, 설계고조위 쪽이 ${t.hwl >= t.hwR ? '크거나 같아 안전 측이다' : '작으므로 극치 고조위도 함께 검토한다'}.` : ''}</div>`;
+  if (t.sgY.length) s += `${T(1, '연최대 해일 편차 (고조 기준)')}<table><tr><th>연도</th><th>편차 (m)</th><th>발생 시각</th><th>연도</th><th>편차 (m)</th><th>발생 시각</th></tr>
+    ${(() => { const a = t.sgY, h2 = Math.ceil(a.length / 2); let r = ''; for (let i = 0; i < h2; i++) { const x = a[i], y = a[i + h2]; r += `<tr><td>${x[0]}</td><td>${ff(x[1] / 100)}</td><td>${esc(x[3] || '')}</td><td>${y ? y[0] : ''}</td><td>${y ? ff(y[1] / 100) : ''}</td><td>${y ? esc(y[3] || '') : ''}</td></tr>`; } return r; })()}</table>`;
+  if (t.Fs) { const F = t.Fs; s += svgPlot({ h: 250, xlab: '검벨 직선화 변수 y = −ln(−ln F)', ylab: '연최대 해일 편차 (m)', vlines: DWE.RS.map(r => [F.yR(r), `${r}년`]),
+    series: [{ type: 'pt', pts: F.pts.map(p => [p.y, p.x]), label: '연최대 편차 (Gringorten 도시)' }, { type: 'line', color: '#b42318', pts: [[Math.min(...F.pts.map(p => p.y)) - 0.3, F.A * (Math.min(...F.pts.map(p => p.y)) - 0.3) + F.B], [F.yR(100) + 0.2, F.A * (F.yR(100) + 0.2) + F.B]], label: `적합선 η = ${ff(F.A, 3)}y + ${ff(F.B, 3)}` }] }) + Fg(1, '연최대 해일 편차 검벨 확률지'); }
+  return s;
+}
 // ---------- 파일 ----------
 function dwPrint() { const t0 = document.title; document.title = `${DWI.title || '설계파 산정 보고서'}_${DWI.site.name || '사업지'}_${DWI.deep.R || 50}년`; window.print(); setTimeout(() => { document.title = t0; }, 1000); }
 function dwExport() {
@@ -394,11 +475,14 @@ function dwExport() {
     title: X.I.title || '설계파 산정 보고서', reportNo: X.I.reportNo || '', returnPeriod: X.R, method: '심해설계파 + 천해 변형(고다)',
     site: { name: S.name || '', lat: nn(S.lat), lon: nn(S.lon), depth: r3(X.h) },
     design: { dir: X.gov.r.dir, Hs: r3(G.Hs), Hmax: r3(G.Hmax), T13: r3(G.T13), Tmax: r3(G.Tmax), Hb: r3(G.Hb), crest: r3(G.crest) } };
+  if (X.cases) { o.site.chartDepth = r3(X.dl); o.waterLevel = { name: X.main.nm, level: r3(X.main.lv) };
+    o.levels = { HWL: r3(X.td.hwl), MSL: X.td.msl != null ? r3(X.td.msl) : null, LWL: 0, AHHW: r3(X.td.ahhw), surge: r3(X.td.surge), slr: r3(X.td.slr), datum: '기본수준면(약최저저조위)' };
+    o.cases = X.cases.filter(c => c.gov).map(c => ({ name: c.nm, level: r3(c.lv), depth: r3(c.h), dir: c.gov.r.dir, Hs: r3(c.gov.x.Hs), Hmax: r3(c.gov.x.Hmax), crest: r3(c.gov.x.crest) })); }
   dwDl(`설계파_${(S.name || '사업지').replace(/[\\/:*?"<>|\s]+/g, '_')}_${X.R}년.json`, JSON.stringify(o, null, 1));
 }
 function dwSaveFile() { dwDl(`설계파_입력_${(DWI.site.name || '사업지').replace(/[\\/:*?"<>|\s]+/g, '_')}.json`, JSON.stringify({ app: 'design-wave-input', ver: 1, saved: iso(new Date()), input: DWI }, null, 1)); }
 async function dwLoadFile(f) {
   if (!f) return; try { const o = JSON.parse(await f.text()); if (o.app !== 'design-wave-input' || !o.input) throw new Error('설계파 입력 파일(design-wave-input)이 아닙니다');
-    const D = DW_DEF(), i = o.input; DWI = { ...D, ...i, site: { ...D.site, ...i.site }, deep: { ...D.deep, ...i.deep }, obs: { ...D.obs, ...i.obs } };
+    const D = DW_DEF(), i = o.input; DWI = { ...D, ...i, site: { ...D.site, ...i.site }, deep: { ...D.deep, ...i.deep }, obs: { ...D.obs, ...i.obs }, tide: { ...D.tide, ...(i.tide || {}) } };
     if (!DWI.deep.rows || !DWI.deep.rows.length) DWI.deep.rows = D.deep.rows; dwSave(); dwForm(); dwRun(); } catch (e) { alert('불러오지 못했습니다: ' + e.message); } }
 function dwDl(name, text) { const u = URL.createObjectURL(new Blob([text], { type: 'application/json' })), a = document.createElement('a'); a.href = u; a.download = name; a.click(); }

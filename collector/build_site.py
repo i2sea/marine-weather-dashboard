@@ -185,6 +185,8 @@ def main():
     for fn in os.listdir(web):  # index.html, analysis.js 등 화면 파일
         if fn.endswith((".js", ".css")):
             shutil.copy(os.path.join(web, fn), os.path.join(a.out, fn))
+    if os.path.isdir(os.path.join(web, "tide")):  # 기준항 조화상수(국립해양조사원 CSV에서 변환)
+        shutil.copytree(os.path.join(web, "tide"), os.path.join(a.out, "tide"), dirs_exist_ok=True)
     if os.path.isdir(os.path.join(web, "deepwave")):  # 심해설계파 자료표(해양수산부 보고서에서 추출)
         shutil.copytree(os.path.join(web, "deepwave"), os.path.join(a.out, "deepwave"), dirs_exist_ok=True)
     # 브라우저가 옛 js를 캐시에서 쓰지 않도록, 파일 내용이 바뀌면 주소 뒤 ?v= 값이 바뀌게 함

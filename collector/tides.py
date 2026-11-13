@@ -19,7 +19,7 @@ CACHE = os.path.join(HERE, "cache", "tides")
 B = "https://apis.data.go.kr/1192136/"
 EXT = B + "extrmTideLvl/GetExtrmTideLvlApiService"
 DEV = B + "deviationCal/GetDeviationCalApiService"
-BUDGET = 280          # 한 번 실행에 새로 부르는 편차계산표 요청 수
+BUDGET = 380          # 한 번 실행에 새로 부르는 편차계산표 요청 수 (매시간 × 24 ≈ 9,100회 < 하루 10,000회)
 Y0 = 2001             # 해일 편차는 이 해부터 (25년 내외)
 
 
@@ -111,11 +111,11 @@ def extremes(key, code):
     o = jload(p)
     if o is not None and age_days(p) < 30:
         return o
-    items, n = call(EXT, key, obsCode=code, pageNo=1, numOfRows=1000)
+    items, n = call(EXT, key, obsCode=code, pageNo=1, numOfRows=300)
     pg = 1
-    while len(items) < n and pg < 5:
+    while len(items) < n and pg < 12:
         pg += 1
-        more, _ = call(EXT, key, obsCode=code, pageNo=pg, numOfRows=1000)
+        more, _ = call(EXT, key, obsCode=code, pageNo=pg, numOfRows=300)
         if not more:
             break
         items += more
