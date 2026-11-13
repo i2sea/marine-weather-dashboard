@@ -19,7 +19,7 @@ def main():
     with pdfplumber.open(a.pdf) as pdf:
         for i, page in enumerate(pdf.pages):
             txt = page.extract_text() or ''
-            if a.grid_table.replace(' ', '') in txt.replace(' ', '').replace('<', '').replace('>', '') and '위경도' in txt and '파고' not in txt:
+            if a.grid_table.replace(' ', '') in txt.replace(' ', '').replace('<', '').replace('>', '') and '위도' in txt and '경도' in txt and '파고' not in txt:
                 for m in re.finditer(r'(?<![\d.])(\d{1,3}(?:-\d{1,2})?)\s+(3\d\.\d{3})\s+(1[23]\d\.\d{3})', txt):
                     grid[m.group(1)] = (float(m.group(2)), float(m.group(3)))
             if a.wave_table.replace(' ', '') not in txt.replace(' ', '') or '파고' not in txt:
