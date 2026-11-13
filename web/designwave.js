@@ -54,7 +54,9 @@ function dwForm() {
   const wds = DSL.filter(d => dsHas(d, 'wh'));
   document.getElementById('dwfrm').innerHTML = `<div class="sub" style="line-height:1.6">입력을 바꾸면 아래 보고서가 바로 다시 계산됩니다. 입력은 이 브라우저와 "입력 저장" 파일에만 남고 어디에도 올라가지 않습니다. <span style="color:#b54708">주황 '가정'</span> 표시 항목은 보고서에도 가정으로 적힙니다.</div>
    <h3>보고서</h3><div class="g">${inp('title', '제목', 'text')}${inp('reportNo', '보고서 번호', 'text')}${inp('author', '작성', 'text')}${inp('date', '작성일', 'date')}</div>
-   <h3>사업지 (현장)</h3><div class="g">${inp('site.name', '지점 이름', 'text')}${inp('site.lat', '위도 (°)')}${inp('site.lon', '경도 (°)')}
+   <h3>사업지 (현장)</h3>
+   <div class="g"><label class="wide">저장된 사업지에서 고르기 (📐 사업지에 그려 둔 경계 — 이름과 중심 좌표를 채움)<select onchange="dwPickArea(this.value)"><option value="">${AREAS.length ? '— 고르세요 —' : '저장된 사업지 없음 (제목줄 📐 사업지에서 그리기)'}</option>${AREAS.map((a, i) => `<option value="${i}" ${I.site.area === a.name ? 'selected' : ''}>${esc(a.name)} (중심 ${areaCenter(a).map(v => v.toFixed(4)).join(', ')})</option>`).join('')}</select></label></div>
+   <div class="g">${inp('site.name', '지점 이름', 'text')}${inp('site.lat', '위도 (°)')}${inp('site.lon', '경도 (°)')}
     ${inp('site.h', '수심 h (설계조위 기준, m)')}${inp('site.tan', '해저 경사 tanθ (예 0.02 = 1/50)')}${inp('site.normal', '등심선 법선 방향 (외해 쪽, °)')}
     ${inp('site.tide', '수심 기준 설명', 'text', 'any', ' class="wide"')}</div>
    <div class="note sub">등심선 법선 방향: 등심선에 수직이면서 외해(먼바다)를 향하는 방위각입니다. 이 방향에서 오는 파는 정면 입사(입사각 0°)로 봅니다. 예: 해안선이 동–서로 놓이고 바다가 남쪽이면 180°.</div>
@@ -70,6 +72,8 @@ function dwForm() {
     <label>채택 분포<select onchange="DWI.obs.method=this.value;dwSave();dwRun()">${[['auto', '자동 (상관계수 최대)'], ['amG', '연최대 · 검벨'], ['potG', 'POT · 검벨'], ['potW', 'POT · 와이블 3모수'], ['potW2', 'POT · 와이블 2모수']].map(([k, n]) => `<option value="${k}" ${k == I.obs.method ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
    ${wds.length ? '' : '<div class="sub" style="color:#b54708">분석 보관함에 유의파고 자료가 없습니다. 지도에서 부이 지점을 골라 1·5·10년 자료를 받으면 관측 극치분석·검증 장이 채워집니다.</div>'}`;
 }
+function dwPickArea(i) { const a = AREAS[+i]; if (i === '' || !a) return; const c = areaCenter(a);
+  Object.assign(DWI.site, { area: a.name, name: a.name, lat: +c[0].toFixed(5), lon: +c[1].toFixed(5) }); dwSave(); dwForm(); dwRun(); }
 function dwSet(path, v, type) { const ks = path.split('.'), last = ks.pop(), o = ks.reduce((a, k) => a[k], DWI); o[last] = type == 'number' ? (v === '' ? '' : +v) : v; dwSave(); dwRun(); }
 
 // ---------- 계산 ----------
@@ -145,7 +149,7 @@ function dwReport(X) {
     <li>굴절: 평행 등심선 가정, 스넬(Snell) 법칙 · 천수: 선형파 이론 · 회절: 차폐 없음 K<sub>d</sub> = 1.0 ${ASM}</li>
     <li>관측 극치분석: 연최대(AM)·POT(Peaks Over Threshold), 검벨·와이블 분포 최소자승 적합(확률지), 붓스트랩 90% 신뢰구간</li></ul>
    ${T(1, '설계 조건')}<table><tr><th>항목</th><th>값</th><th>비고</th></tr>
-    <tr><td>사업지</td><td>${esc(S.name || '–')}</td><td class="l">${S.lat !== '' ? `${ff(S.lat, 4)}°N, ${ff(S.lon, 4)}°E` : ''}</td></tr>
+    <tr><td>사업지</td><td>${esc(S.name || '–')}</td><td class="l">${S.lat !== '' ? `${ff(S.lat, 4)}°N, ${ff(S.lon, 4)}°E` : ''}${S.area && S.area === S.name ? ' (사업지 경계 중심)' : ''}</td></tr>
     <tr><td>수심 h</td><td>${ff(h)} m</td><td class="l">${esc(S.tide)}</td></tr>
     <tr><td>해저 경사 tanθ</td><td>${ff(tan, 4)} (1/${tan > 0 ? ff(1 / tan, 0) : '–'})</td><td class="l">현장 주변 평균 경사</td></tr>
     <tr><td>등심선 법선 방향</td><td>${ff(nrm, 1)}°</td><td class="l">외해 쪽 방위각, 이 방향 입사 = 정면 입사</td></tr>

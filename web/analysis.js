@@ -491,7 +491,7 @@ function hav(a, b) { const R = 6371, p1 = a[0] * Math.PI / 180, p2 = b[0] * Math
   return 2 * R * Math.asin(Math.sqrt(Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2)); }
 function parseCoordsText(t) {  // "위도,경도" 줄마다 (경도,위도 순서여도 범위로 판단)
   const pts = []; for (const ln of t.split(/\r?\n/)) { const m = ln.match(/(-?\d+(?:\.\d+)?)[\s,;]+(-?\d+(?:\.\d+)?)/); if (!m) continue; let a = +m[1], b = +m[2]; if (a > 90 && b < 90) [a, b] = [b, a]; pts.push([a, b]); } return pts; }
-async function areaFile(file) {
+async function areaFile(file, replaceIdx) {
   const txt = await file.text(), name = file.name.replace(/\.[^.]+$/, ''), rings = [];
   if (/\.kml$/i.test(file.name) || txt.includes('<kml')) {
     const doc = new DOMParser().parseFromString(txt, 'text/xml');
@@ -503,7 +503,15 @@ async function areaFile(file) {
     walk(g);
   } else { const p = parseCoordsText(txt); if (p.length) rings.push(p); }
   if (!rings.length) { alert('좌표를 찾지 못했습니다 (KML, GeoJSON, 또는 "위도,경도" 줄 목록)'); return; }
+  if (replaceIdx != null && AREAS[replaceIdx]) { AREAS[replaceIdx].rings = rings; areaSave(); areaDraw(); openAreas(replaceIdx); return; }
   AREAS.push({ name, rings }); areaSave(); areaDraw(); openAreas(AREAS.length - 1);
+}
+function areaEdit(i) {
+  const n = document.getElementById('ae_name').value.trim(), rings = document.getElementById('ae_txt').value.split(/\r?\n\s*\r?\n/).map(parseCoordsText).filter(r => r.length);
+  if (!rings.length) { alert('"위도, 경도" 형식의 줄이 없습니다'); return; }
+  const bad = rings.flat().find(([la, lo]) => !(la > 20 && la < 50 && lo > 115 && lo < 140));
+  if (bad && !confirm(`${bad[0]}, ${bad[1]} 은(는) 우리나라 주변 범위를 벗어납니다. 그대로 저장할까요?`)) return;
+  AREAS[i].name = n || AREAS[i].name; AREAS[i].rings = rings; areaSave(); areaDraw(); openAreas(i);
 }
 function areaFromText() { const t = document.getElementById('a_txt').value, n = document.getElementById('a_name').value.trim() || `사업지 ${AREAS.length + 1}`, p = parseCoordsText(t);
   if (!p.length) { alert('"위도,경도" 형식의 줄을 넣어 주세요'); return; } AREAS.push({ name: n, rings: [p] }); areaSave(); areaDraw(); openAreas(AREAS.length - 1); }
@@ -517,7 +525,13 @@ function openAreas(sel) {
     near = `<div class="box"><h3>${a.name}</h3><div class="sub">중심 ${c[0].toFixed(4)}, ${c[1].toFixed(4)}</div>
      <table class="tbl"><tr><th>가까운 관측소</th><th>종류</th><th>거리</th><th>바람</th></tr>
      ${list.map(({ s, d }) => `<tr style="cursor:pointer" onclick="select(DATA.stations.find(x=>x.stn=='${s.stn}'))"><td>${s.name} (${s.stn})</td><td>${TYPES[s.tp]?.[0] || s.tp}</td><td>${d.toFixed(1)}km</td><td>${s.ws != null ? '○' : '–'}</td></tr>`).join('')}</table>
-     <button class="btn pri" onclick="windPick(${c[0]},${c[1]})">중심점 재현바람장 받기</button> <button class="btn" onclick="AREAS.splice(${sel},1);areaSave();areaDraw();openAreas()">이 경계 지우기</button></div>`;
+     <button class="btn pri" onclick="windPick(${c[0]},${c[1]})">중심점 재현바람장 받기</button> <button class="btn" onclick="if(confirm('“'+AREAS[${sel}].name+'” 경계를 지울까요? 되돌릴 수 없습니다.')){AREAS.splice(${sel},1);areaSave();areaDraw();openAreas()}">이 경계 지우기</button></div>
+     <div class="box"><h3>✏ 이름·좌표 고치기</h3>
+      <input id="ae_name" value="${a.name.replace(/"/g, '&quot;')}" style="width:100%;padding:5px;border:1px solid var(--line);border-radius:6px;margin-bottom:4px">
+      <textarea id="ae_txt" rows="${Math.min(14, a.rings.reduce((n, r) => n + r.length + 1, 0))}" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:5px;font-family:monospace;font-size:12px">${a.rings.map(r => r.map(([x, y]) => `${+x.toFixed(6)}, ${+y.toFixed(6)}`).join('\n')).join('\n\n')}</textarea>
+      <div class="sub">한 줄에 "위도, 경도". 구역이 여러 개면 빈 줄로 나눕니다.</div>
+      <button class="btn pri" onclick="areaEdit(${sel})">고친 내용 저장</button>
+      <label class="btn" style="display:inline-block">📂 파일로 바꾸기<input type="file" accept=".kml,.geojson,.json,.csv,.txt" style="display:none" onchange="areaFile(this.files[0],${sel});this.value=''"></label></div>`;
     if (typeof curNearHTML === 'function') near += curNearHTML(c[0], c[1]);
     if (typeof asosNearHTML === 'function') near += asosNearHTML(c[0], c[1]);
   }
