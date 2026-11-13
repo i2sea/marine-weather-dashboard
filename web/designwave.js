@@ -39,7 +39,7 @@ let DWR = null;   // 마지막 계산 결과
 function dwOpen() {
   let el = document.getElementById('dwr'); if (!el) { el = document.createElement('div'); el.id = 'dwr'; document.body.appendChild(el); }
   if (!DWI.obs.ds && AN.lastWave) DWI.obs.ds = AN.lastWave.d.id;
-  el.innerHTML = `<div class="bar0 np"><b>📄 설계파 산정 보고서</b>
+  el.innerHTML = `<div class="bar0 np"><b>📄 설계파 산정 보고서</b><span style="font-size:12px;opacity:.85;margin-right:6px">① 아래 입력란 채우기 → ② 이 줄의 파란 단추로 파일 받기</span>
     <button onclick="dwRun()">↻ 다시 계산</button><button class="pri" onclick="dwPrint()">🖨 인쇄 / PDF</button>
     <button class="pri" onclick="dwExport()">⬇ 결과 파일(.json) — 기초 설계도구용</button>
     <button onclick="dwSaveFile()">💾 입력 저장</button><label>📂 입력 불러오기<input type="file" accept=".json" style="display:none" onchange="dwLoadFile(this.files[0]);this.value=''"></label>
