@@ -108,7 +108,7 @@ function dwForm() {
      <td><input type="number" step="any" value="${esc(r.H0)}" onchange="DWI.deep.rows[${i}].H0=this.value;DWI.deep.edited=true;dwSave();dwRun()"></td><td><input type="number" step="any" value="${esc(r.T)}" onchange="DWI.deep.rows[${i}].T=this.value;DWI.deep.edited=true;dwSave();dwRun()"></td>
      <td>${I.deep.rows.length > 1 ? `<button class="btn" onclick="DWI.deep.rows.splice(${i},1);dwSave();dwForm();dwRun()">삭제</button>` : ''}</td></tr>`).join('')}</table>
    <button class="btn" onclick="DWI.deep.rows.push({dir:'S',H0:'',T:''});dwSave();dwForm()">+ 파향 추가</button> <span class="sub">파향이 여럿이면 현장 최대파고가 가장 큰 파향을 설계파로 채택합니다.</span>
-   <h3>관측 극치분석 (검증용)</h3><div class="g">
+   <h3>관측 극치분석 (검증용)</h3>${dwObsRecHTML()}<div class="g">
     <label class="wide">관측 자료 (분석 보관함에서 유의파고가 있는 자료)<select onchange="DWI.obs.ds=this.value;dwSave();dwRun()"><option value="">(관측 자료 쓰지 않음)</option>${wds.map(d => `<option value="${esc(d.id)}" ${d.id == I.obs.ds ? 'selected' : ''}>${esc(d.name)} · ${esc(d.kind)}</option>`).join('')}</select></label>
     ${inp('obs.depth', '관측 부이 수심 (m, 비교 설명용)')}${inp('obs.u', 'POT 임계값 (m, 비우면 자동: 연 약 3회)')}${inp('obs.sep', '독립 폭풍 최소 간격 (시간)')}
     <label>채택 분포<select onchange="DWI.obs.method=this.value;dwSave();dwRun()">${[['auto', '자동 (상관계수 최대)'], ['amG', '연최대 · 검벨'], ['potG', 'POT · 검벨'], ['potW', 'POT · 와이블 3모수'], ['potW2', 'POT · 와이블 2모수']].map(([k, n]) => `<option value="${k}" ${k == I.obs.method ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
@@ -116,6 +116,27 @@ function dwForm() {
 }
 function dwPickArea(i) { const a = AREAS[+i]; if (i === '' || !a) return; const c = areaCenter(a);
   Object.assign(DWI.site, { area: a.name, name: a.name, lat: +c[0].toFixed(5), lon: +c[1].toFixed(5) }); dwSave(); dwForm(); dwRun(); }
+// 관측소 추천: 30분 장기 자료가 있는 해양기상부이(B) 중 사업지에서 가까운 순
+function dwObsRecHTML() {
+  if (typeof DATA === 'undefined' || !DATA) return '';
+  const I = DWI, la = +I.site.lat, lo = +I.site.lon;
+  if (!(la > 0 && lo > 0)) return '<div class="sub">사업지 위치를 넣으면 극치분석에 쓸 관측소를 추천합니다.</div>';
+  const dsOf = st => DSL.filter(d => dsHas(d, 'wh') && !d.daily && ((d.stn && String(d.stn.stn) == String(st)) || String(d.name || '').includes(String(st)))).sort((a, b) => b.t.length - a.t.length)[0];
+  const B = DATA.stations.filter(x => x.tp == 'B').map(x => ({ x, d: hav([la, lo], [x.lat, x.lon]), b: bearing([la, lo], [x.lat, x.lon]) })).sort((a, b) => a.d - b.d).slice(0, 3);
+  const C = DATA.stations.filter(x => x.tp == 'C').map(x => ({ x, d: hav([la, lo], [x.lat, x.lon]) })).sort((a, b) => a.d - b.d)[0];
+  if (!B.length) return '';
+  const r0 = B[0];
+  return `<div style="background:#ecfdf3;border:1px solid #abefc6;border-radius:8px;padding:8px 10px;margin:6px 0">
+   <div style="font-size:12.5px;line-height:1.65"><b style="color:#067647">★ 추천 관측소: ${esc(r0.x.name)}(${r0.x.stn})</b> — 사업지에서 ${r0.d.toFixed(1)} km ${DIR16[Math.round(r0.b / 22.5) % 16]}. 30분 간격 유의파고를 장기간 받을 수 있는 <b>해양기상부이</b> 중 가장 가깝습니다. 연최대·POT 극치분석에는 10년 이상 자료를 권합니다.${B[1] && B[1].d < r0.d * 1.5 ? ` 두 번째 ${esc(B[1].x.name)}(${B[1].d.toFixed(1)} km)도 거리가 비슷하니, 사업지와 외해 노출 방향(파가 들어오는 방향)이 더 비슷한 쪽을 쓰거나 둘 다 받아 비교하세요.` : ''}</div>
+   <table class="tbl" style="margin-top:4px"><tr><th>해양기상부이</th><th>거리·방위</th><th>현재 파고</th><th>분석 보관함</th><th></th></tr>
+   ${B.map(({ x, d, b }, i) => { const ds = dsOf(x.stn); return `<tr${ds && ds.id == I.obs.ds ? ' style="background:#d1fadf"' : ''}><td><b>${esc(x.name)}</b> ${x.stn}${i == 0 ? ' <span style="color:#067647;font-weight:700">★</span>' : ''}</td><td>${d.toFixed(1)} km ${DIR16[Math.round(b / 22.5) % 16]}</td><td>${x.wh != null ? x.wh + ' m' : '–'}</td>
+     <td>${ds ? `있음 (${dsSpan(ds)})` : '없음'}</td><td>${ds ? `<button class="btn${ds.id == I.obs.ds ? '' : ' pri'}" onclick="DWI.obs.ds='${ds.id}';dwSave();dwForm();dwRun()">${ds.id == I.obs.ds ? '사용 중' : '이 자료 쓰기'}</button>` : `<button class="btn" onclick="dwGetBuoy('${x.stn}')">장기 자료 받으러 가기 →</button>`}</td></tr>`; }).join('')}</table>
+   ${C ? `<div class="sub" style="margin-top:4px">참고: 가장 가까운 파고부이 ${esc(C.x.name)}(${C.x.stn}, ${C.d.toFixed(1)} km)는 기상청 API로 일자료만 받을 수 있어 극치분석에는 맞지 않습니다.</div>` : ''}</div>`;
+}
+function dwGetBuoy(stn) {   // 보고서를 닫고 그 부이의 장기 받기(10년)를 열어 줌 — 받고 나서 보고서를 다시 열면 목록에 '이 자료 쓰기'가 나옴
+  const x = DATA.stations.find(s => s.stn == stn); if (!x) return; const el = document.getElementById('dwr'); if (el) el.remove();
+  select(x); setTimeout(() => { if (typeof lpreset === 'function') lpreset(2); const b = document.getElementById('l1'); if (b) b.scrollIntoView({ block: 'center' }); }, 300);
+}
 function dwSet(path, v, type) { const ks = path.split('.'), last = ks.pop(), o = ks.reduce((a, k) => a[k], DWI); o[last] = type == 'number' ? (v === '' ? '' : +v) : v; if (path == 'deep.R' || path == 'deep.grid') DWI.deep.edited = true; dwSave(); if (/^site\.(lat|lon|normal)$/.test(path)) dwForm(); dwRun(); }
 
 // ---------- 계산 ----------
