@@ -11,6 +11,32 @@ const DW_DEF = () => ({
 let DWI = (() => { try { const o = JSON.parse(localStorage.getItem('dwInput') || 'null'); if (o && o.site && o.deep) { const D = DW_DEF(); return { ...D, ...o, site: { ...D.site, ...o.site }, deep: { ...D.deep, ...o.deep }, obs: { ...D.obs, ...o.obs } }; } } catch (e) { } return DW_DEF(); })();
 const dwSave = () => { try { localStorage.setItem('dwInput', JSON.stringify(DWI)); } catch (e) { } };
 let DWR = null;   // 마지막 계산 결과
+let DWT = null;   // 심해설계파 자료표 (deepwave/deepwave.json — 해양수산부 보고서 표에서 추출, 사이트 관리자가 교체)
+fetch('deepwave/deepwave.json?d=' + iso(new Date())).then(r => r.ok ? r.json() : null).then(j => { if (j && j.points) { DWT = j; if (document.getElementById('dwfrm')) dwForm(); } }).catch(() => { });
+const bearing = (a, b) => { const p1 = a[0] * Math.PI / 180, p2 = b[0] * Math.PI / 180, dl = (b[1] - a[1]) * Math.PI / 180;
+  return (Math.atan2(Math.sin(dl) * Math.cos(p2), Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl)) * 180 / Math.PI + 360) % 360; };
+const reaches = (dir, nrm) => !(nrm !== '' && isFinite(+nrm)) || Math.abs(((dirDeg(dir) - +nrm) % 360 + 540) % 360 - 180) < 90;
+function dwGridHTML() {
+  if (!DWT) return '<div class="sub">심해설계파 자료표를 불러오는 중이거나 없습니다 — 아래 표에 직접 넣으세요.</div>';
+  const S = DWT.src, I = DWI, la = +I.site.lat, lo = +I.site.lon;
+  let h = `<div style="background:#eff8ff;border:1px solid #b2ddff;border-radius:8px;padding:8px 10px;margin:6px 0"><b>📚 내장 자료:</b> ${S.publisher} 「${S.title}」(${S.date}) ${S.table} · 격자점 ${DWT.points.length}개 · ${S.rp}년 빈도
+   <div class="sub">받은 곳: ${S.obtained && (S.obtained.url || S.obtained.where) ? `${esc(S.obtained.where || '')} ${S.obtained.url ? `<a href="${esc(S.obtained.url)}" target="_blank">${esc(S.obtained.url)}</a>` : ''}` : '(사이트 관리자 확인 중)'} · 자료표 추출 ${esc(S.extracted || '')}</div>`;
+  if (!(la > 0 && lo > 0)) return h + '<div class="sub">사업지 위도·경도를 넣으면(또는 저장된 사업지를 고르면) 가까운 격자점이 여기에 나옵니다.</div></div>';
+  const near = DWT.points.map(p => ({ p, d: hav([la, lo], [p.lat, p.lon]), b: bearing([la, lo], [p.lat, p.lon]) })).sort((a, b) => a.d - b.d).slice(0, 6);
+  h += `<div class="sub" style="margin:4px 0">사업지에서 가까운 격자점 — 눌러서 파향별 H0·T1/3 채우기 (등심선 법선 방향 기준으로 해안 쪽으로 오는 파향만)</div>
+   <table class="tbl"><tr><th>격자점</th><th>위치</th><th>거리·방위</th><th>해안 쪽 파향 최대 H0</th><th>쪽</th><th></th></tr>
+   ${near.map(({ p, d, b }) => { const ok = DWT.dirs.map((dir, i) => ({ dir, H: p.H[i] })).filter(x => reaches(x.dir, I.site.normal)), mx = ok.reduce((a, x) => x.H > a.H ? x : a, { H: 0 });
+     return `<tr${I.deep.grid == p.id ? ' style="background:#d1e9ff"' : ''}><td><b>${p.id}</b></td><td>${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}</td><td>${d.toFixed(1)} km ${DIR16[Math.round(b / 22.5) % 16]}</td><td>${mx.H ? `${mx.H} m (${mx.dir})` : '–'}</td><td>${p.p}</td>
+      <td><button class="btn${I.deep.grid == p.id ? '' : ' pri'}" onclick="dwFillGrid('${p.id}')">${I.deep.grid == p.id ? '다시 채우기' : '채우기'}</button></td></tr>`; }).join('')}</table></div>`;
+  return h;
+}
+function dwFillGrid(id) {
+  const p = DWT && DWT.points.find(x => x.id == id); if (!p) return; const S = DWT.src, I = DWI;
+  const rows = DWT.dirs.map((dir, i) => ({ dir, H0: p.H[i], T: p.T[i], U: p.U[i], C: p.C[i] })).filter(r => reaches(r.dir, I.site.normal));
+  I.deep = { ...I.deep, src: `${S.publisher} 「${S.title}」(${S.date})`, grid: p.id, lat: p.lat, lon: p.lon, R: S.rp, rows, edited: false,
+    cite: { publisher: S.publisher, title: S.title, date: S.date, table: S.table, page: p.p, pdf: p.pdf, note: S.note, gridTable: S.gridTable, issuer: S.issuer, obtained: S.obtained || {} } };
+  dwSave(); dwForm(); dwRun();
+}
 
 (function dwCSS() {
   const s = document.createElement('style');
@@ -60,10 +86,10 @@ function dwForm() {
     ${inp('site.h', '수심 h (설계조위 기준, m)')}${inp('site.tan', '해저 경사 tanθ (예 0.02 = 1/50)')}${inp('site.normal', '등심선 법선 방향 (외해 쪽, °)')}
     ${inp('site.tide', '수심 기준 설명', 'text', 'any', ' class="wide"')}</div>
    <div class="note sub">등심선 법선 방향: 등심선에 수직이면서 외해(먼바다)를 향하는 방위각입니다. 이 방향에서 오는 파는 정면 입사(입사각 0°)로 봅니다. 예: 해안선이 동–서로 놓이고 바다가 남쪽이면 180°.</div>
-   <h3>심해설계파 (해양수산부 보고서 격자점 값)</h3><div class="g">${inp('deep.src', '출처 보고서', 'text', 'any', ' class="wide"')}${inp('deep.grid', '격자점 번호', 'text')}${inp('deep.lat', '격자점 위도 (°)')}${inp('deep.lon', '격자점 경도 (°)')}${inp('deep.R', '재현기간 (년)', 'number', '1')}</div>
+   <h3>심해설계파 (해양수산부 보고서 격자점 값)</h3>${dwGridHTML()}<div class="g">${inp('deep.src', '출처 보고서', 'text', 'any', ' class="wide"')}${inp('deep.grid', '격자점 번호', 'text')}${inp('deep.lat', '격자점 위도 (°)')}${inp('deep.lon', '격자점 경도 (°)')}${inp('deep.R', '재현기간 (년)', 'number', '1')}</div>
    <table class="tbl" style="margin-top:6px"><tr><th>파향 (16방위)</th><th>심해 유의파고 H0 (m)</th><th>유의파 주기 T1/3 (s)</th><th></th></tr>
-    ${I.deep.rows.map((r, i) => `<tr><td><select onchange="DWI.deep.rows[${i}].dir=this.value;dwSave();dwRun()">${DIR16.map(x => `<option ${x == r.dir ? 'selected' : ''}>${x}</option>`).join('')}</select></td>
-     <td><input type="number" step="any" value="${esc(r.H0)}" onchange="DWI.deep.rows[${i}].H0=this.value;dwSave();dwRun()"></td><td><input type="number" step="any" value="${esc(r.T)}" onchange="DWI.deep.rows[${i}].T=this.value;dwSave();dwRun()"></td>
+    ${I.deep.rows.map((r, i) => `<tr><td><select onchange="DWI.deep.rows[${i}].dir=this.value;DWI.deep.edited=true;dwSave();dwRun()">${DIR16.map(x => `<option ${x == r.dir ? 'selected' : ''}>${x}</option>`).join('')}</select></td>
+     <td><input type="number" step="any" value="${esc(r.H0)}" onchange="DWI.deep.rows[${i}].H0=this.value;DWI.deep.edited=true;dwSave();dwRun()"></td><td><input type="number" step="any" value="${esc(r.T)}" onchange="DWI.deep.rows[${i}].T=this.value;DWI.deep.edited=true;dwSave();dwRun()"></td>
      <td>${I.deep.rows.length > 1 ? `<button class="btn" onclick="DWI.deep.rows.splice(${i},1);dwSave();dwForm();dwRun()">삭제</button>` : ''}</td></tr>`).join('')}</table>
    <button class="btn" onclick="DWI.deep.rows.push({dir:'S',H0:'',T:''});dwSave();dwForm()">+ 파향 추가</button> <span class="sub">파향이 여럿이면 현장 최대파고가 가장 큰 파향을 설계파로 채택합니다.</span>
    <h3>관측 극치분석 (검증용)</h3><div class="g">
@@ -74,7 +100,7 @@ function dwForm() {
 }
 function dwPickArea(i) { const a = AREAS[+i]; if (i === '' || !a) return; const c = areaCenter(a);
   Object.assign(DWI.site, { area: a.name, name: a.name, lat: +c[0].toFixed(5), lon: +c[1].toFixed(5) }); dwSave(); dwForm(); dwRun(); }
-function dwSet(path, v, type) { const ks = path.split('.'), last = ks.pop(), o = ks.reduce((a, k) => a[k], DWI); o[last] = type == 'number' ? (v === '' ? '' : +v) : v; dwSave(); dwRun(); }
+function dwSet(path, v, type) { const ks = path.split('.'), last = ks.pop(), o = ks.reduce((a, k) => a[k], DWI); o[last] = type == 'number' ? (v === '' ? '' : +v) : v; if (path == 'deep.R' || path == 'deep.grid') DWI.deep.edited = true; dwSave(); if (/^site\.(lat|lon|normal)$/.test(path)) dwForm(); dwRun(); }
 
 // ---------- 계산 ----------
 function dwObs(d) {
@@ -197,9 +223,11 @@ function dwReport(X) {
         series: [{ type: 'pt', pts: pk.pts.map(p => [yv(p), p.x]), label: 'POT 정점' }, { type: 'line', color: '#b42318', pts: [[y0, pk.A * y0 + pk.B], [y1 * 1.03, pk.A * y1 * 1.03 + pk.B]], label: `적합선 (${NAMES[o.adopt && o.adopt.startsWith('pot') ? o.adopt : 'potW']})` }] }) + Fg(2, 'POT 정점 확률지 (적합도)'); }
   }
   // 3. 심해설계파
-  s += `<h2 class="pb">3. 심해설계파</h2><p>${esc(I.deep.src)}의 격자점 값을 쓴다.</p>
-   ${T(3, '심해설계파 (격자점 값)')}<table><tr><th>격자점</th><th>위치</th><th>재현기간</th><th>파향</th><th>H<sub>0</sub> (m)</th><th>T<sub>1/3</sub> (s)</th><th>심해 파장 L<sub>0</sub> (m)</th><th>파형경사 H<sub>0</sub>/L<sub>0</sub></th></tr>
-   ${X.rows.map(r => `<tr><td>${esc(I.deep.grid || '–')}</td><td>${I.deep.lat !== '' ? `${ff(I.deep.lat, 3)}°N, ${ff(I.deep.lon, 3)}°E` : '–'}</td><td>${R}년</td><td>${r.dir} (${dirDeg(r.dir)}°)</td><td>${ff(r.H0)}</td><td>${ff(r.T, 1)}</td><td>${ff(DWE.L0(r.T), 1)}</td><td>${ff(r.H0 / DWE.L0(r.T), 4)}</td></tr>`).join('') || '<tr><td colspan="8">입력 없음</td></tr>'}</table>
+  const ct = I.deep.cite, gd = ct && S.lat !== '' && I.deep.lat !== '' ? hav([+S.lat, +S.lon], [+I.deep.lat, +I.deep.lon]) : null;
+  s += `<h2 class="pb">3. 심해설계파</h2>${ct ? `<p>${esc(ct.publisher)}(${esc(ct.date)}) 「${esc(ct.title)}」의 ${esc(ct.table)}에서 사업지에 가까운 격자점 <b>${esc(I.deep.grid)}</b>(${ff(I.deep.lat, 3)}°N, ${ff(I.deep.lon, 3)}°E${gd != null ? `, 사업지에서 ${ff(gd, 1)} km` : ''})의 ${I.deep.R}년 빈도 값을 쓴다. ${esc(ct.note || '')}</p>
+    <div class="note">출처: ${esc(ct.publisher)}, 「${esc(ct.title)}」, ${esc(ct.date)}, ${esc(ct.table)}, ${esc(ct.page)}쪽 (PDF ${ct.pdf}쪽). 격자점 위치: 같은 보고서 ${esc(ct.gridTable || '')}.${I.deep.edited ? ' <span class="wrn">※ 보고서 값을 불러온 뒤 일부 값을 직접 고쳤음</span>' : ''}${+I.deep.R !== 50 ? ' <span class="wrn">※ 내장 자료는 50년 빈도 값이다</span>' : ''}</div>` : `<p>${esc(I.deep.src)}의 격자점 값을 쓴다.</p>`}
+   ${T(3, '심해설계파 (격자점 값)')}<table><tr><th>격자점</th><th>위치</th><th>재현기간</th><th>파향</th><th>H<sub>0</sub> (m)</th><th>T<sub>1/3</sub> (s)</th>${ct ? '<th>결정 원인</th><th>해상풍 (m/s)</th>' : ''}<th>심해 파장 L<sub>0</sub> (m)</th><th>파형경사 H<sub>0</sub>/L<sub>0</sub></th></tr>
+   ${X.rows.map(r => `<tr><td>${esc(I.deep.grid || '–')}</td><td>${I.deep.lat !== '' ? `${ff(I.deep.lat, 3)}°N, ${ff(I.deep.lon, 3)}°E` : '–'}</td><td>${R}년</td><td>${r.dir} (${dirDeg(r.dir)}°)</td><td>${ff(r.H0)}</td><td>${ff(r.T, 1)}</td>${ct ? `<td>${r.C == 'T' ? '태풍' : r.C == 'E' ? '비태풍' : '–'}</td><td>${r.U != null ? ff(r.U, 1) : '–'}</td>` : ''}<td>${ff(DWE.L0(r.T), 1)}</td><td>${ff(r.H0 / DWE.L0(r.T), 4)}</td></tr>`).join('') || '<tr><td colspan="10">입력 없음</td></tr>'}</table>
    <div class="eq">L<sub>0</sub> = g·T²/(2π), g = 9.81 m/s²</div>`;
   // 4. 천해 변형
   s += `<h2>4. 현장 설계파 (천해 변형)</h2>`;
@@ -281,7 +309,16 @@ function dwReport(X) {
       <tr><td>파봉고 (정수면 위)</td><td>η<sub>c</sub></td><td><b>${ff(G.crest)} m</b></td><td class="l">${G.crestNote}</td></tr></table>
      <h3>가정 사항</h3><ul class="note"><li>평행 등심선(스넬 법칙), 대표 주기 규칙파 굴절, 방향 분산 무시</li><li>회절계수 K<sub>d</sub> = 1.0 (차폐 없음)</li><li>선형 천수계수</li><li>T<sub>max</sub> ≈ T<sub>1/3</sub></li>${obs && obs.auto ? '<li>POT 임계값 자동 설정 (연 약 3회)</li>' : ''}${G.crestCap ? '<li>크노이드 영역의 파봉고 0.8·H<sub>max</sub> 상한</li>' : ''}</ul>
      <p class="note">결과 파일(.json)을 기초 설계도구의 "설계파 파일 가져오기"로 넣으면 설계파고 H = H<sub>max</sub> ${ff(G.Hmax)} m, 주기 T = T<sub>max</sub> ${ff(G.Tmax)} s가 채워진다. 본 보고서는 ${esc(S.name || '사업지')} 기초 구조계산서에 첨부한다.</p>`; }
-  s += `<p class="note" style="margin-top:24px;border-top:1px solid #d0d5dd;padding-top:6px">작성: 기상 데이터(바람·파랑) 관측 대시보드 · ${esc(I.date)}</p>`;
+  // 7. 자료 출처
+  const src = [], ct2 = I.deep.cite;
+  if (ct2) { const ob = ct2.obtained || {};
+    src.push(`<b>심해설계파</b> — ${esc(ct2.issuer || ct2.publisher)}, 「${esc(ct2.title)}」, ${esc(ct2.date)}. ${esc(ct2.table)} (${esc(ct2.page)}쪽, PDF ${ct2.pdf}쪽), 격자점 위치 ${esc(ct2.gridTable || '')}.<br>받은 곳: ${ob.url || ob.where ? `${esc(ob.where || '')} ${esc(ob.url || '')}` : '사이트 관리자가 제공한 보고서 원문(PDF)'} · 관측 대시보드에 내장된 자료표(deepwave.json)에서 불러옴${I.deep.edited ? ' · <span class="wrn">일부 값 직접 수정</span>' : ''}`); }
+  else if (X.rows.length) src.push(`<b>심해설계파</b> — ${esc(I.deep.src)} (작성자 직접 입력)`);
+  if (obs) { const st = obs.d.stn || {}; src.push(`<b>관측 자료</b> — 기상청 API허브 해양기상부이 자료 (${esc(st.name || obs.d.name)}${st.stn ? ' ' + st.stn : ''}, ${dsSpan(obs.d)}) · https://apihub.kma.go.kr`); }
+  src.push('<b>설계기준</b> — 국토교통부·해양수산부, 항만 및 어항 설계기준(KDS 64 10 10) · 국가건설기준센터 https://www.kcsc.re.kr');
+  src.push('<b>쇄파 산정식</b> — Goda, Y. (2000), Random Seas and Design of Maritime Structures, 2nd ed., World Scientific');
+  s += `<h2>7. 자료 출처</h2><ol style="font-size:12.5px;line-height:1.7">${src.map(x => `<li>${x}</li>`).join('')}</ol>
+   <p class="note" style="margin-top:24px;border-top:1px solid #d0d5dd;padding-top:6px">작성: 기상 데이터(바람·파랑) 관측 대시보드 (https://i2sea.github.io/marine-weather-dashboard/) · ${esc(I.date)}</p>`;
   return s;
 }
 
