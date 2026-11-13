@@ -64,7 +64,8 @@ function dwFillGrid(id) {
   #dwr .frm h3{margin:10px 0 6px;font-size:14px}#dwr .frm .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px 10px}
   #dwr .frm label{display:flex;flex-direction:column;font-size:12px;color:#475467;gap:2px}#dwr .frm input,#dwr .frm select{padding:5px 6px;border:1px solid #d0d5dd;border-radius:6px;font-size:13px}
   #dwr .frm .wide{grid-column:1/-1}#dwr .frm table input,#dwr .frm table select{width:80px}
-  #dwr .doc{max-width:960px;margin:12px auto 40px;background:#fff;padding:36px 46px;border:1px solid #d0d5dd;color:#101828;line-height:1.65}
+  #dwr .doc{max-width:960px;margin:12px auto 40px;background:#fff;padding:36px 46px;border:1px solid #d0d5dd;color:#101828;line-height:1.65;word-break:keep-all;overflow-wrap:break-word}
+  #dwr .doc p,#dwr .doc li{text-align:justify;text-justify:inter-character}#dwr .doc .nw{white-space:nowrap}
   #dwr .doc h1{font-size:22px;text-align:center;margin:0 0 4px}#dwr .doc .cov{text-align:center;color:#475467;margin-bottom:22px}
   #dwr .doc h2{font-size:17px;border-bottom:2px solid #0f2742;padding-bottom:3px;margin:26px 0 8px}#dwr .doc h3{font-size:14.5px;margin:16px 0 6px}
   #dwr .doc table{border-collapse:collapse;width:100%;margin:6px 0 4px;font-size:12px}#dwr .doc th,#dwr .doc td{border:1px solid #98a2b3;padding:3px 6px;text-align:center}
@@ -160,6 +161,14 @@ function dwObs(d) {
   let adopt = DWI.obs.method; if (adopt == 'auto' || !F[adopt]) { const c = ['potW', 'potG', 'potW2', 'amG'].filter(k => F[k] && k != 'amM').sort((a, b) => F[b].r - F[a].r); adopt = c[0] || null; }
   return { d, step, yt, K, mx, mxt, hm: hm > 0 ? hm : null, hmt, AM, u, auto, sep, P, lam, F, CI, adopt };
 }
+// 보고서 줄바꿈 정리: 숫자와 단위를 붙이고(줄 끝에서 갈라지지 않게), 띄어쓰기 없는 긴 이름(파일명)은 _ 뒤에서만 끊김
+function dwTidy(html) {
+  return html.replace(/>([^<]+)</g, (m, t) => '>' + t
+    .replace(/(\d) (m\/s|km|m|s|°|년|개월|개|회|시간|쪽)(?=[\s,.)\]·~<]|$)/g, '$1\u00a0$2')
+    .replace(/(\d)( ?)(~|×|−|\+)( ?)(\d)/g, (q, a, s1, o, s2, b) => a + (s1 && '\u00a0') + o + (s2 && '\u00a0') + b)
+    .replace(/(\d%?) (구간|모수|파향)/g, '$1\u00a0$2').replace(/(와이블|검벨) (\d)/g, '$1\u00a0$2')
+    .replace(/([A-Za-z0-9가-힣])_(?=[A-Za-z0-9가-힣])/g, '$1_\u200b') + '<');
+}
 function dwRun() {
   const I = DWI, S = I.site, h = +S.h, tan = +S.tan, nrm = +S.normal, R = +I.deep.R || 50;
   const rows = I.deep.rows.map(r => ({ ...r, H0: +r.H0, T: +r.T })).filter(r => r.H0 > 0 && r.T > 0);
@@ -167,7 +176,7 @@ function dwRun() {
   const ok = tr.filter(o => o.x.reach), gov = ok.length ? ok.reduce((a, b) => b.x.Hmax > a.x.Hmax ? b : a) : null;
   const d = DSL.find(x => x.id == I.obs.ds), obs = d ? dwObs(d) : null;
   DWR = { I, h, tan, nrm, R, rows, tr, gov, obs };
-  document.getElementById('dwdoc').innerHTML = dwReport(DWR);
+  document.getElementById('dwdoc').innerHTML = dwTidy(dwReport(DWR));
 }
 
 // ---------- SVG 그림 ----------
@@ -331,7 +340,7 @@ function dwReport(X) {
     s += `${T(5, `재현기간 ${R}년 유의파고 비교`)}<table><tr><th>구분</th><th>위치</th><th>수심</th><th>H<sub>1/3</sub> (m)</th><th>비고</th></tr>
       <tr><td>심해설계파</td><td>${esc(DWI.deep.grid || '격자점')}</td><td>심해</td><td>${ff(gov.r.H0)}</td><td class="l">${esc(DWI.deep.src)} (${gov.r.dir})</td></tr>
       <tr class="res"><td>현장 설계파 (본 보고서)</td><td>${esc(DWI.site.name || '사업지')}</td><td>${ff(h, 1)} m</td><td><b>${ff(G.Hs)}</b></td><td class="l">천해 변형(고다), H<sub>max</sub> ${ff(G.Hmax)} m</td></tr>
-      <tr><td>관측 극치 (${NAMES[o.adopt]})</td><td>${esc(st.name || o.d.name)}${dist != null ? ` (현장에서 ${ff(dist, 1)} km)` : ''}</td><td>${bd > 0 ? ff(bd, 1) + ' m' : '–'}</td><td><b>${ff(Ho)}</b><br><span style="font-size:10.5px">90% 구간 ${ff(cR && cR.lo)}~${ff(cR && cR.hi)}</span></td><td class="l">관측 ${ff(o.K, 1)}년, 최대 관측 ${ff(o.mx)} m</td></tr>
+      <tr><td>관측 극치<br><span style="font-size:10.5px">(${NAMES[o.adopt]})</span></td><td>${esc(st.name || o.d.name)}${dist != null ? ` (현장에서 ${ff(dist, 1)} km)` : ''}</td><td>${bd > 0 ? ff(bd, 1) + ' m' : '–'}</td><td><b>${ff(Ho)}</b><br><span style="font-size:10.5px">90% 구간 ${ff(cR && cR.lo)}~${ff(cR && cR.hi)}</span></td><td class="l">관측 ${ff(o.K, 1)}년, 최대 관측 ${ff(o.mx)} m</td></tr>
       ${Xo.reach ? `<tr><td>관측 극치 → 현장 수심 변형 <span class="note">(가정)</span></td><td>${esc(DWI.site.name || '사업지')}</td><td>${ff(h, 1)} m</td><td><b>${ff(Xo.Hs)}</b></td><td class="l">관측 극치를 심해파로 보고${Ksb !== 1 ? ` (부이 수심 천수계수 ${ff(Ksb, 3)}로 되돌려 H<sub>0</sub> = ${ff(H0o)} m)` : ''} 현장과 같은 파향·주기·수심·경사로 변형, H<sub>max</sub> ${ff(Xo.Hmax)} m</td></tr>` : ''}
       <tr><td>비율</td><td colspan="2">현장 설계파 / 관측 극치</td><td><b>${ff(ratio, 2)}</b></td><td class="l">${cR && cR.hi != null ? (G.Hs >= cR.lo && G.Hs <= cR.hi ? '관측 극치 90% 구간 안' : G.Hs > cR.hi ? '관측 극치 90% 구간보다 큼' : '관측 극치 90% 구간보다 작음') : ''}</td></tr>
       ${ratio2 != null ? `<tr class="res"><td>비율 (같은 수심끼리)</td><td colspan="2">현장 설계파 / 관측 극치 변형값</td><td><b>${ff(ratio2, 2)}</b></td><td class="l">${ratio2 >= 0.95 ? '같은 조건에서 관측 극치 수준 이상' : inCI2 ? '관측 극치 90% 구간 안 (통계 불확실성 범위)' : '같은 조건에서도 관측 극치 90% 구간보다 작음'}</td></tr>` : ''}
