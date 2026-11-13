@@ -290,7 +290,7 @@ function waveStats(d) {
     hist, bw, exc, mon, years, full, gum, joint, rose, rn, hmaxMax: hmaxAll.length ? amax(hmaxAll) : null };
 }
 function waveView(out, d) {
-  if (!dsHas(d, 'wh')) { out.innerHTML = '<div class="sub">이 자료에는 유의파고가 없습니다 (등표·재현바람장 등).</div>'; return; }
+  if (!dsHas(d, 'wh')) { out.innerHTML = '<div class="sub">이 자료에는 유의파고가 없습니다 (등표·재현바람장 등).</div><button class="btn" style="margin-top:6px" onclick="dwOpen()">📄 설계파 산정 보고서 (관측 극치 없이)</button>'; return; }
   const S = waveStats(d), dt = S.mxt ? new Date(S.mxt) : null;
   out.innerHTML = `${d.daily ? '<div class="err" style="margin:4px 0">일평균 유의파고 자료라 최대값·초과확률이 실제보다 작게 나옵니다. 참고용으로만 보세요.</div>' : ''}
   <div class="grid">
@@ -317,6 +317,7 @@ function waveView(out, d) {
     · 설계 H<sub>1/3</sub> 직접 <input id="dz_h" type="number" step="0.1" value="${AN.design.hs ?? ''}" placeholder="비우면 극치" style="flex:none;width:86px">m
     <button class="btn pri" onclick="designSet()">계산</button></div>
    <div id="dz_out"></div>
+   <button class="btn pri" style="margin-top:6px" onclick="dwOpen()">📄 설계파 산정 보고서 만들기 (구조계산서 첨부용 · 기초 설계도구 파일)</button>
    <div class="sub" style="line-height:1.6;margin-top:6px">· 설계 유의파고: 위 극치(검벨) 결과에서 재현기간 값, 또는 직접 넣은 값 (공식 설계파가 있으면 넣으세요) · 최대파고: Hmax = (Hmax/Hs) × Hs, 기본 1.8 (쇄파대 밖에서 흔히 쓰는 값)<br>
    · 주기: 이 자료에서 유의파고 상위 10% 시간의 파고–주기 관계(T = a·H<sup>b</sup>)로 추정 · 파장: 수심을 넣은 분산관계식 · 쇄파 한계: Miche 식 H<sub>b</sub> = 0.142·L·tanh(2πd/L)<br>
    · <b>관측소 위치의 관측 자료로 낸 참고값입니다.</b> 실제 설계에는 해양수산부 심해설계파(재현기간별 설계파 추산)와 사업지 천해 변형(굴절·천수) 검토 결과를 쓰세요.</div></div>
