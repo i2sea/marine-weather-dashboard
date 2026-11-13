@@ -324,16 +324,28 @@ function dwReport(X) {
     const o = obs, F = o.F[o.adopt], ci = o.CI[o.adopt], G = gov.x, Ri = DWE.RS.indexOf(R), Ho = F.xR(R), cR = Ri >= 0 ? ci[Ri] : DWE.boot(o.adopt.startsWith('am') ? o.AM : o.P.map(p => p.v), o.adopt.startsWith('am') ? 1 : o.lam, (x, l) => DWE.fit(x, l, F.dist, F.k), [R], 300)[0];
     const st = o.d.stn || {}, dist = st.lat && DWI.site.lat !== '' ? hav([+st.lat, +st.lon], [+DWI.site.lat, +DWI.site.lon]) : null, bd = +DWI.obs.depth;
     const bW = bd > 0 ? DWE.wave(G.T13, bd) : null, ratio = G.Hs / Ho;
+    // 관측 극치를 심해 환산(부이 수심을 알면 천수계수로 되돌림) → 같은 파향·주기·수심·경사로 천해 변형 (가정)
+    const Ksb = bW && bd / bW.L0 < 0.5 ? Math.sqrt(bW.Cg0 / bW.Cg) : 1, H0o = Ho / Ksb;
+    const Xo = DWE.transform({ H0: H0o, T: gov.r.T, h, tan, dirFrom: dirDeg(gov.r.dir), normalOff: nrm }), ratio2 = Xo.reach ? G.Hs / Xo.Hs : null;
+    const inCI2 = ratio2 != null && cR && cR.lo != null && ratio2 >= cR.lo / Ho, brk = G.govS !== 'Ks·H0′', rD = Ho / gov.r.H0, okD = rD >= 0.85 && rD <= 1.15;
     s += `${T(5, `재현기간 ${R}년 유의파고 비교`)}<table><tr><th>구분</th><th>위치</th><th>수심</th><th>H<sub>1/3</sub> (m)</th><th>비고</th></tr>
       <tr><td>심해설계파</td><td>${esc(DWI.deep.grid || '격자점')}</td><td>심해</td><td>${ff(gov.r.H0)}</td><td class="l">${esc(DWI.deep.src)} (${gov.r.dir})</td></tr>
       <tr class="res"><td>현장 설계파 (본 보고서)</td><td>${esc(DWI.site.name || '사업지')}</td><td>${ff(h, 1)} m</td><td><b>${ff(G.Hs)}</b></td><td class="l">천해 변형(고다), H<sub>max</sub> ${ff(G.Hmax)} m</td></tr>
       <tr><td>관측 극치 (${NAMES[o.adopt]})</td><td>${esc(st.name || o.d.name)}${dist != null ? ` (현장에서 ${ff(dist, 1)} km)` : ''}</td><td>${bd > 0 ? ff(bd, 1) + ' m' : '–'}</td><td><b>${ff(Ho)}</b><br><span style="font-size:10.5px">90% 구간 ${ff(cR && cR.lo)}~${ff(cR && cR.hi)}</span></td><td class="l">관측 ${ff(o.K, 1)}년, 최대 관측 ${ff(o.mx)} m</td></tr>
-      <tr><td>비율</td><td colspan="2">현장 설계파 / 관측 극치</td><td><b>${ff(ratio, 2)}</b></td><td class="l">${cR && cR.hi != null ? (G.Hs >= cR.lo && G.Hs <= cR.hi ? '관측 극치 90% 구간 안' : G.Hs > cR.hi ? '관측 극치 90% 구간보다 큼' : '관측 극치 90% 구간보다 작음') : ''}</td></tr></table>
+      ${Xo.reach ? `<tr><td>관측 극치 → 현장 수심 변형 <span class="note">(가정)</span></td><td>${esc(DWI.site.name || '사업지')}</td><td>${ff(h, 1)} m</td><td><b>${ff(Xo.Hs)}</b></td><td class="l">관측 극치를 심해파로 보고${Ksb !== 1 ? ` (부이 수심 천수계수 ${ff(Ksb, 3)}로 되돌려 H<sub>0</sub> = ${ff(H0o)} m)` : ''} 현장과 같은 파향·주기·수심·경사로 변형, H<sub>max</sub> ${ff(Xo.Hmax)} m</td></tr>` : ''}
+      <tr><td>비율</td><td colspan="2">현장 설계파 / 관측 극치</td><td><b>${ff(ratio, 2)}</b></td><td class="l">${cR && cR.hi != null ? (G.Hs >= cR.lo && G.Hs <= cR.hi ? '관측 극치 90% 구간 안' : G.Hs > cR.hi ? '관측 극치 90% 구간보다 큼' : '관측 극치 90% 구간보다 작음') : ''}</td></tr>
+      ${ratio2 != null ? `<tr class="res"><td>비율 (같은 수심끼리)</td><td colspan="2">현장 설계파 / 관측 극치 변형값</td><td><b>${ff(ratio2, 2)}</b></td><td class="l">${ratio2 >= 0.95 ? '같은 조건에서 관측 극치 수준 이상' : inCI2 ? '관측 극치 90% 구간 안 (통계 불확실성 범위)' : '같은 조건에서도 관측 극치 90% 구간보다 작음'}</td></tr>` : ''}
+      <tr><td>비율 (심해끼리)</td><td colspan="2">관측 극치 / 심해설계파</td><td><b>${ff(rD, 2)}</b></td><td class="l">${okD ? '±15% 이내 — 심해설계파가 관측과 부합' : rD > 1 ? '관측 극치가 15% 넘게 큼' : '관측 극치가 15% 넘게 작음'}</td></tr></table>
      <h3>5.1 차이에 대한 설명</h3><ul>
       <li>관측 극치는 관측소 위치${bd > 0 ? `(수심 ${ff(bd, 1)} m${bW ? `, h/L<sub>0</sub> = ${ff(bd / bW.L0, 3)}` : ''})` : ''}의 값이고, 현장 설계파는 수심 ${ff(h, 1)} m (h/L<sub>0</sub> = ${ff(G.hL0, 3)})에서 굴절·천수·쇄파를 거친 값이다.${dist != null ? ` 두 지점은 ${ff(dist, 1)} km 떨어져 있어 외해 노출·차폐 조건이 다를 수 있다.` : ''}</li>
       <li>관측 기간은 ${ff(o.K, 1)}년으로, ${R}년 값은 외삽이다.${o.K < 20 ? ' 관측 기간에 큰 태풍이 없었으면 관측 극치는 작게 나온다.' : ''} 심해설계파는 장기 파랑 추산(태풍 포함) 결과로 정한 값이다.</li>
       ${o.yt.some(r => r.rateTy != null && r.rateTy < 0.7) ? `<li class="wrn">태풍기 자료율이 70% 미만인 해(${o.yt.filter(r => r.rateTy != null && r.rateTy < 0.7).map(r => r.y).join(', ')})가 있어 관측 극치가 과소일 수 있다.</li>` : ''}
-      <li>${ratio >= 1 ? `현장 설계파가 관측 극치보다 ${ff((ratio - 1) * 100, 0)}% 크므로, 설계파는 관측으로 확인된 수준을 포괄한다.` : `<span class="wrn">현장 설계파가 관측 극치보다 ${ff((1 - ratio) * 100, 0)}% 작다.</span> 관측소와 현장의 조건 차이를 확인하고, 필요하면 설계파 입력(격자점·파향·수심·경사)을 다시 검토한다.`}</li></ul>`;
+      <li>심해 기준으로 보면 관측 극치 ${ff(Ho)} m는 심해설계파 ${ff(gov.r.H0)} m의 ${ff(rD * 100, 0)}%이다. ${okD ? '두 값이 ±15% 안에서 맞으므로, 서로 독립인 파랑 추산과 관측이 같은 수준을 보여 심해설계파(출발값)는 타당하다.' : rD > 1 ? `<span class="wrn">관측 극치가 심해설계파보다 크다.</span> 관측소가 현장보다 외해 노출이 큰지(태풍 진로 방향 등) 확인하고, 필요하면 더 큰 파향·인접 격자점 값을 검토한다.` : '관측 극치가 심해설계파보다 작다. 관측 기간이 짧거나 관측소가 차폐된 경우 흔히 나타나며, 심해설계파를 그대로 쓰면 안전 측이다.'}</li>
+      <li>${ratio >= 1 ? `현장 설계파가 관측 극치보다 ${ff((ratio - 1) * 100, 0)}% 크므로, 설계파는 관측으로 확인된 수준을 포괄한다.`
+        : brk ? `현장 설계파가 관측 극치보다 ${ff((1 - ratio) * 100, 0)}% 작은 것은 수심 ${ff(h, 1)} m에서 고다 쇄파식(${G.govS})이 지배하기 때문이다 (H<sub>max</sub>/H<sub>1/3</sub> = ${ff(G.Hmax / G.Hs, 2)} &lt; 1.8). 이 수심에서는 심해 파고가 더 커도 파고가 수심으로 제한되므로, 깊은 곳 관측값보다 작은 것이 정상이다.${ratio2 != null ? ` 관측 극치를 같은 조건으로 변형하면 ${ff(Xo.Hs)} m이고 현장 설계파는 그 ${ff(ratio2 * 100, 0)}%이다.${ratio2 >= 0.95 ? '' : inCI2 ? ` 이 차이는 관측 극치 90% 구간(${ff(cR.lo)}~${ff(cR.hi)} m, 하한이 추정값의 ${ff(cR.lo / Ho * 100, 0)}%) 안이라 관측 기간 ${ff(o.K, 1)}년의 통계 불확실성 수준이다. 보수적으로 가려면 변형값 ${ff(Xo.Hs)} m를 함께 검토한다.` : ` <span class="wrn">이 차이는 관측 극치 90% 구간보다 크므로 설계파 입력(격자점·파향·수심·경사)을 다시 검토한다.</span>`}` : ''}`
+        : ratio2 != null && ratio2 >= 0.95 ? `현장 설계파가 관측 극치보다 ${ff((1 - ratio) * 100, 0)}% 작지만, 관측 극치를 같은 조건으로 변형한 값(${ff(Xo.Hs)} m)과 비교하면 그 이상이므로 차이는 굴절·천수 등 위치 차이로 설명된다.`
+        : `<span class="wrn">현장 설계파가 관측 극치보다 ${ff((1 - ratio) * 100, 0)}% 작고, 같은 조건으로 변형한 관측값${ratio2 != null ? `(${ff(Xo.Hs)} m)` : ''}보다도 작다.</span> 관측소와 현장의 조건 차이를 확인하고, 필요하면 설계파 입력(격자점·파향·수심·경사)을 다시 검토한다.`}</li>
+      ${brk ? `<li>참고: 구조물 위치마다 수심이 다르면 가장 깊은 위치로도 계산해 본다. 수심이 깊어지면 쇄파 제한이 풀려 설계파가 커진다.</li>` : ''}</ul>`;
   }
   // 6. 결론
   s += `<h2>6. 결론</h2>`;
