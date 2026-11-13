@@ -122,16 +122,17 @@ function dwObsRecHTML() {
   const I = DWI, la = +I.site.lat, lo = +I.site.lon;
   if (!(la > 0 && lo > 0)) return '<div class="sub">사업지 위치를 넣으면 극치분석에 쓸 관측소를 추천합니다.</div>';
   const dsOf = st => DSL.filter(d => dsHas(d, 'wh') && !d.daily && ((d.stn && String(d.stn.stn) == String(st)) || String(d.name || '').includes(String(st)))).sort((a, b) => b.t.length - a.t.length)[0];
-  const B = DATA.stations.filter(x => x.tp == 'B').map(x => ({ x, d: hav([la, lo], [x.lat, x.lon]), b: bearing([la, lo], [x.lat, x.lon]) })).sort((a, b) => a.d - b.d).slice(0, 3);
+  const yrs = d => d ? (d.t[d.t.length - 1] - d.t[0]) / 31557600000 : null;
+  const B = DATA.stations.filter(x => x.tp == 'B').map(x => { const ds = dsOf(x.stn); return { x, ds, y: yrs(ds), d: hav([la, lo], [x.lat, x.lon]), b: bearing([la, lo], [x.lat, x.lon]) }; }).sort((a, b) => a.d - b.d).slice(0, 5);
   const C = DATA.stations.filter(x => x.tp == 'C').map(x => ({ x, d: hav([la, lo], [x.lat, x.lon]) })).sort((a, b) => a.d - b.d)[0];
   if (!B.length) return '';
-  const r0 = B[0];
+  const short = B.filter(o => o.ds && o.y < 3), r0 = B.find(o => !(o.ds && o.y < 3)) || B[0], r1 = B.find(o => o !== r0 && !(o.ds && o.y < 3));
   return `<div style="background:#ecfdf3;border:1px solid #abefc6;border-radius:8px;padding:8px 10px;margin:6px 0">
-   <div style="font-size:12.5px;line-height:1.65"><b style="color:#067647">★ 추천 관측소: ${esc(r0.x.name)}(${r0.x.stn})</b> — 사업지에서 ${r0.d.toFixed(1)} km ${DIR16[Math.round(r0.b / 22.5) % 16]}. 30분 간격 유의파고를 장기간 받을 수 있는 <b>해양기상부이</b> 중 가장 가깝습니다. 연최대·POT 극치분석에는 10년 이상 자료를 권합니다.${B[1] && B[1].d < r0.d * 1.5 ? ` 두 번째 ${esc(B[1].x.name)}(${B[1].d.toFixed(1)} km)도 거리가 비슷하니, 사업지와 외해 노출 방향(파가 들어오는 방향)이 더 비슷한 쪽을 쓰거나 둘 다 받아 비교하세요.` : ''}</div>
+   <div style="font-size:12.5px;line-height:1.65"><b style="color:#067647">★ 추천 관측소: ${esc(r0.x.name)}(${r0.x.stn})</b> — 사업지에서 ${r0.d.toFixed(1)} km ${DIR16[Math.round(r0.b / 22.5) % 16]}. 30분 간격 유의파고를 장기간 받을 수 있는 <b>해양기상부이</b> 중 가장 가깝습니다${short.length ? ` (받아 보니 자료가 짧은 ${short.map(o => esc(o.x.name)).join('·')} 제외)` : ''}. 연최대·POT 극치분석에는 최소 3년, 권장 10년 이상 자료가 필요합니다. 받아 보기 전에는 관측 시작 시점을 알 수 없으니, 받은 뒤 "분석 보관함" 칸의 기간을 확인하세요.${r1 && r1.d < r0.d * 1.5 ? ` 다음 후보 ${esc(r1.x.name)}(${r1.d.toFixed(1)} km)도 거리가 비슷하니, 사업지와 외해 노출 방향(파가 들어오는 방향)이 더 비슷한 쪽을 쓰거나 둘 다 받아 비교하세요.` : ''}</div>
    <table class="tbl" style="margin-top:4px"><tr><th>해양기상부이</th><th>거리·방위</th><th>현재 파고</th><th>분석 보관함</th><th></th></tr>
-   ${B.map(({ x, d, b }, i) => { const ds = dsOf(x.stn); return `<tr${ds && ds.id == I.obs.ds ? ' style="background:#d1fadf"' : ''}><td><b>${esc(x.name)}</b> ${x.stn}${i == 0 ? ' <span style="color:#067647;font-weight:700">★</span>' : ''}</td><td>${d.toFixed(1)} km ${DIR16[Math.round(b / 22.5) % 16]}</td><td>${x.wh != null ? x.wh + ' m' : '–'}</td>
-     <td>${ds ? `있음 (${dsSpan(ds)})` : '없음'}</td><td>${ds ? `<button class="btn${ds.id == I.obs.ds ? '' : ' pri'}" onclick="DWI.obs.ds='${ds.id}';dwSave();dwForm();dwRun()">${ds.id == I.obs.ds ? '사용 중' : '이 자료 쓰기'}</button>` : `<button class="btn" onclick="dwGetBuoy('${x.stn}')">장기 자료 받으러 가기 →</button>`}</td></tr>`; }).join('')}</table>
-   ${C ? `<div class="sub" style="margin-top:4px">참고: 가장 가까운 파고부이 ${esc(C.x.name)}(${C.x.stn}, ${C.d.toFixed(1)} km)는 기상청 API로 일자료만 받을 수 있어 극치분석에는 맞지 않습니다.</div>` : ''}</div>`;
+   ${B.map(o => { const { x, d, b, ds, y } = o; return `<tr${ds && ds.id == I.obs.ds ? ' style="background:#d1fadf"' : ''}><td><b>${esc(x.name)}</b> ${x.stn}${o === r0 ? ' <span style="color:#067647;font-weight:700">★</span>' : ''}</td><td>${d.toFixed(1)} km ${DIR16[Math.round(b / 22.5) % 16]}</td><td>${x.wh != null ? x.wh + ' m' : '–'}</td>
+     <td>${ds ? `있음 (${dsSpan(ds)}, ${y >= 1 ? '약 ' + y.toFixed(1) + '년' : '약 ' + Math.max(1, Math.round(y * 12)) + '개월'})${y < 3 ? '<br><span style="color:#b42318">극치분석에는 너무 짧음 (최소 3년)</span>' : ''}` : '없음'}</td><td>${ds ? `<button class="btn${ds.id == I.obs.ds ? '' : ' pri'}" onclick="DWI.obs.ds='${ds.id}';dwSave();dwForm();dwRun()">${ds.id == I.obs.ds ? '사용 중' : '이 자료 쓰기'}</button>` : `<button class="btn" onclick="dwGetBuoy('${x.stn}')">장기 자료 받으러 가기 →</button>`}</td></tr>`; }).join('')}</table>
+   ${C ? `<div class="sub" style="margin-top:4px">이미 받아 둔 CSV(예: 울산 10년치)가 있으면 📊 분석 → CSV 올리기로 넣으면 이 표에 '있음'으로 나옵니다.<br>참고: 가장 가까운 파고부이 ${esc(C.x.name)}(${C.x.stn}, ${C.d.toFixed(1)} km)는 기상청 API로 일자료만 받을 수 있어 극치분석에는 맞지 않습니다.</div>` : ''}</div>`;
 }
 function dwGetBuoy(stn) {   // 보고서를 닫고 그 부이의 장기 받기(10년)를 열어 줌 — 받고 나서 보고서를 다시 열면 목록에 '이 자료 쓰기'가 나옴
   const x = DATA.stations.find(s => s.stn == stn); if (!x) return; const el = document.getElementById('dwr'); if (el) el.remove();
@@ -220,6 +221,7 @@ function dwReport(X) {
   // 2. 관측 극치분석
   s += `<h2 class="pb">2. 관측 자료 극치분석</h2>`;
   if (!obs) s += `<p class="note">관측 자료를 고르지 않아 이 장은 생략한다. (관측 대시보드에서 부이 장기 자료를 받아 "관측 자료"로 고르면 채워진다)</p>`;
+  else if (!obs.adopt) s += `<p class="wrn">고른 관측 자료(${esc(obs.d.name)})는 유효 자료가 ${ff(obs.K, 2)}년(연최대 사용 연도 ${obs.AM.length}개, POT 정점 ${obs.P.length}개)뿐이라 극치분석을 할 수 없다. 최소 3년, 권장 10년 이상 자료가 있는 해양기상부이를 골라야 한다.</p>`;
   else {
     const o = obs, d = o.d, st = d.stn || {};
     s += `<h3>2.1 관측 자료</h3>${T(2, '관측 자료 개요')}<table><tr><th>항목</th><th>내용</th></tr>
@@ -317,7 +319,7 @@ function dwReport(X) {
   }
   // 5. 검증
   s += `<h2 class="pb">5. 검증 — 관측 극치값과 비교</h2>`;
-  if (!gov || !obs || !obs.adopt) s += `<p class="note">${!gov ? '현장 설계파' : '관측 극치'}가 없어 비교하지 않았다.</p>`;
+  if (!gov || !obs || !obs.adopt) s += `<p class="note">${!gov ? '현장 설계파가 계산되지 않아' : !obs ? '관측 자료를 고르지 않아' : `관측 자료 기간이 ${ff(obs.K, 2)}년으로 짧아 극치값을 구하지 못해`} 비교하지 않았다.</p>`;
   else {
     const o = obs, F = o.F[o.adopt], ci = o.CI[o.adopt], G = gov.x, Ri = DWE.RS.indexOf(R), Ho = F.xR(R), cR = Ri >= 0 ? ci[Ri] : DWE.boot(o.adopt.startsWith('am') ? o.AM : o.P.map(p => p.v), o.adopt.startsWith('am') ? 1 : o.lam, (x, l) => DWE.fit(x, l, F.dist, F.k), [R], 300)[0];
     const st = o.d.stn || {}, dist = st.lat && DWI.site.lat !== '' ? hav([+st.lat, +st.lon], [+DWI.site.lat, +DWI.site.lon]) : null, bd = +DWI.obs.depth;

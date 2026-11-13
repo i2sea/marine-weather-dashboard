@@ -29,6 +29,7 @@ function dsFromSER(st, ser) {
 }
 // 장기 받기(부이 30분) → 보관함
 function dsFromBuoy(st, rows, a, b) {
+  if (rows.length) { const f = x => new Date(+x.slice(0, 4), +x.slice(4, 6) - 1, +x.slice(6, 8)); a = f(String(rows[0].TM)); b = f(String(rows[rows.length - 1].TM)); }  // 실제 자료 기간으로 이름 붙임
   dsAdd({ id: `buoy-${st.stn}-${iso(a)}-${iso(b)}`, name: `${st.name}(${st.stn}) ${iso(a)}~${iso(b)}`, kind: '부이 30분', z: zOf(st), stn: st,
     t: rows.map(r => tm12(r.TM)), ws: rows.map(r => num(r.WS1)), wd: rows.map(r => num(r.WD1)), wh: rows.map(r => num(r.WH_SIG)),
     hmax: rows.map(r => num(r.WH_MAX)), wp: rows.map(r => num(r.WP)), wo: rows.map(r => num(r.WO)) });
